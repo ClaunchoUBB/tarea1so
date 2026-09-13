@@ -32,11 +32,12 @@ struct Game *games; // Creamos la estructura global para los juegos
 
 void vaciar_tablero(struct Game *game)
 {
-
+    int x;
+    int y;
     /* Esta función existe para que a la hora de crear un juego, el tablero siempre esté lleno de ' ' */
-    for (int x = 0; x < 3; x++)
+    for (x = 0; x < 3; x++)
     {
-        for (int y = 0; y < 3; y++)
+        for (y = 0; y < 3; y++)
         {
             game->tablero[x][y] = ' ';
         }
@@ -45,7 +46,8 @@ void vaciar_tablero(struct Game *game)
 
 void mostrar_tablero(struct Game *game)
 {
-    for (int x = 0; x < 3; x++)
+    int x;
+    for (x = 0; x < 3; x++)
     {
         printf(" %c | %c | %c \n",
                game->tablero[x][0],
@@ -62,7 +64,7 @@ void shutdown_server()
     free(games);
 }
 
-void main(int argc, char const *argv[])
+int main(int argc, char *argv[])
 {
     struct sockaddr_in direccion_propia;
     direccion_propia.sin_family = AF_INET;
@@ -90,4 +92,6 @@ void main(int argc, char const *argv[])
 
     shutdown_server();
     /* Aquí matamos todos los sockets */
+
+    return 0;
 }
