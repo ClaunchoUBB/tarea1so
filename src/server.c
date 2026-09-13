@@ -1,19 +1,39 @@
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
+#include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <strings.h>
+
+/*
+struct sockaddr_in
+{
+    short int sin_family;      AF_INET
+    unsigned short sin_port;   Número de puerto
+    struct in_addr sin_addr;   Dirección IP
+    unsigned char sin_zero[8]; Relleno con 0
+};
+*/
 
 struct Game
 {
+    /*
+    Estructura básica
+    para la gestión de las partidas
+    la idea es que cada partida tiene su propio tablero
+    y un par de sockets para la comunicación con los jugadores
+    */
     char tablero[3][3];
-    int iniciado;
     /* 1 Corresponde a partida iniciada*/
 };
 
-struct Game *games;
+struct Game *games; // Creamos la estructura global para los juegos
 
 void vaciar_tablero(struct Game *game)
 {
+
+    /* Esta función existe para que a la hora de crear un juego, el tablero siempre esté lleno de ' ' */
     for (int x = 0; x < 3; x++)
     {
         for (int y = 0; y < 3; y++)
@@ -41,10 +61,33 @@ void shutdown_server()
 {
     free(games);
 }
+
 void main(int argc, char const *argv[])
 {
+    struct sockaddr_in direccion_propia;
+    direccion_propia.sin_family = AF_INET;
+    direccion_propia.sin_port = 0;
+    direccion_propia.sin_addr.s_addr = htonl(INADDR_ANY);
+    bzero(&(direccion_propia.sin_zero), 8);
+
+    socklen_t size_direccion_propia = sizeof(direccion_propia);
+
+    int socketfd;
+    socketfd = socket(AF_INET, SOCK_STREAM, 0);
+    /* Creamos el fichero descriptor del socket*/
+
+    bind(socketfd, (struct sockaddr *)(&direccion_propia), size_direccion_propia);
+    /* Enlazamos el fichero descriptor del socket con la socket adress de entrada*/
+
+    getsockname(socketfd, (struct sockaddr *)&direccion_propia, &size_direccion_propia);
+    /* Le pedimos el nombre para que el usuario conozca el puerto */
+
+    printf("Esperando en todas las interfaces de red\nPuerto:%d \n", direccion_propia.sin_port);
+    /* Informamos al usuario */
+
     games = malloc(5 * sizeof(*games));
     /*Asignamos la memoria para los 5 juegos*/
 
     shutdown_server();
+    /* Aquí matamos todos los sockets */
 }
