@@ -1,7 +1,20 @@
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
+#include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+struct sockaddr_in
+{
+    short int sin_family; /* AF_INET */
+    unsigned short sin_port;/* Número de puerto */
+    struct in_addr sin_addr; /* Dirección IP */
+    unsigned char sin_zero[8]; /* Relleno con 0 */
+};
+
+
+
 
 struct Game
 {
@@ -10,7 +23,7 @@ struct Game
     /* 1 Corresponde a partida iniciada*/
 };
 
-struct Game *games;
+struct Game *games; //Creamos la estructura global para los juegos
 
 void vaciar_tablero(struct Game *game)
 {
@@ -41,6 +54,7 @@ void shutdown_server()
 {
     free(games);
 }
+
 void main(int argc, char const *argv[])
 {
     games = malloc(5 * sizeof(*games));
