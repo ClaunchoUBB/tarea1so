@@ -32,8 +32,16 @@ struct Game
     la idea es que cada partida tiene su propio tablero
     y un par de sockets para la comunicación con los jugadores
     */
-    char tablero[3][3];
-    /* 1 Corresponde a partida iniciada*/
+
+    char tablero[9];
+    /*
+    El tablero será representado de la sigueinte manera
+
+    [0][1][2]
+    [3][4][5]  == [0][1][2][3][4][5][6][7][8]
+    [6][7][8]
+
+    */
 
     int jugadores[2]
 };
@@ -47,32 +55,15 @@ struct Cola
     int back;
 };
 
-
-
 void vaciar_tablero(struct Game *game)
 {
-
     /* Esta función existe para que a la hora de crear un juego, el tablero siempre esté lleno de ' ' */
     for (int x = 0; x < 3; x++)
     {
         for (int y = 0; y < 3; y++)
         {
-            game->tablero[x][y] = ' ';
+            game->tablero[x] = ' ';
         }
-    }
-}
-
-void mostrar_tablero(struct Game *game)
-{
-    for (int x = 0; x < 3; x++)
-    {
-        printf(" %c | %c | %c \n",
-               game->tablero[x][0],
-               game->tablero[x][1],
-               game->tablero[x][2]);
-
-        if (x < 2)
-            printf("---+---+---\n");
     }
 }
 
@@ -81,8 +72,270 @@ void shutdown_server()
     free(games);
 }
 
+int check_jugada(int jugada, char signo_jugador, struct Game *partida)
+{
+    if (jugada > 8 || jugada < 0)
+    {
+        return -1;
+    }
+    if (partida->tablero[jugada] != ' ')
+    {
+        // Si el espacio donde se quiere hacer una jugada es distinto de ' '
+        // Se retorna -1, indicando una jugada inválida
+        return -1;
+    }
+    // En caso de que la jugada sea válida se lleva a cabo
+    // y verificamos si estaba en el centro
+    partida->tablero[jugada] = signo_jugador;
+    if (jugada == 4)
+    {
+        // De ser el caso, comprobamos las diagonales
+        if ((partida->tablero[0] && partida->tablero[8]) == signo_jugador)
+        {
+            return 1; // 1 corresponde con una victoria del jugador en turno
+        }
+        if ((partida->tablero[6] && partida->tablero[2]) == signo_jugador)
+        {
+            return 1;
+        }
+    }
+    else
+    {
+        // En caso de que no esté en el centro, solo comprobamos las posiciones en forma de +
+        // para esto usaremos un switch que variará según el entero de la jugada
+
+        switch (jugada)
+        {
+        case 0:
+
+            // (partida->tablero[]&&partida->tablero[]) == signo_jugador
+
+            if ((partida->tablero[1] && partida->tablero[2]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[3] && partida->tablero[6]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+
+        case 1:
+            if ((partida->tablero[0] && partida->tablero[2]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[4] && partida->tablero[7]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 2:
+            if ((partida->tablero[0] && partida->tablero[1]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[5] && partida->tablero[8]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 3:
+            if ((partida->tablero[0] && partida->tablero[6]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[4] && partida->tablero[5]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 4:
+            if ((partida->tablero[1] && partida->tablero[7]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[3] && partida->tablero[5]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 5:
+            if ((partida->tablero[2] && partida->tablero[8]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[3] && partida->tablero[4]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 6:
+            if ((partida->tablero[0] && partida->tablero[3]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[7] && partida->tablero[8]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 7:
+            if ((partida->tablero[1] && partida->tablero[4]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[6] && partida->tablero[8]) == signo_jugador)
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        case 8:
+            if ((partida->tablero[2] && partida->tablero[5]) == signo_jugador)
+            {
+                return 1;
+            }
+            if ((partida->tablero[6] && partida->tablero[7]) == signo_jugador)
+            // SIX SEVEEEEEEN
+            {
+                return 1;
+            }
+
+            return 0;
+            break;
+        default:
+            perror("Jugada no verificada\n");
+            break;
+        }
+    }
+}
+
 int ejecutar_partida(struct Game *partida)
 {
+    int jugada_buff;
+    int partida_finalizada = -1;
+    int status_jugada;
+    int contador_ddos = 0;
+    // Este contador evitará que una persona mantenga
+    // el juego en su turno abusando de usar jugadas inválidas, tienen 3 oportunidades
+    // para hacer una jugada válida, si la tercera no es válida
+    // se termina la conexión y se le concede la victoria al otro jugador
+    while (partida_finalizada == -1)
+    {
+        recv(partida->jugadores[0], &jugada_buff, sizeof(jugada_buff), NULL);
+        status_jugada = check_jugada(jugada_buff, 'X', partida);
+        while (status_jugada == -1)
+        {
+            if (contador_ddos == 3)
+            {
+                send(partida->jugadores[0], -3, sizeof(-3), NULL);
+                close(partida->jugadores[0]);
+                send(partida->jugadores[1], 10, sizeof(10), NULL);
+                // El código 10 será el de victoria
+                close(partida->jugadores[1]);
+                nExitTask(1);
+            }
+            send(partida->jugadores[0], -1, sizeof(-1), NULL);
+            contador_ddos++;
+            recv(partida->jugadores[0], &jugada_buff, sizeof(jugada_buff), NULL);
+            status_jugada = check_jugada(jugada_buff, 'X', partida);
+            // La idea es que el cliente pueda recibir este -1 e indicar al jugador que su jugada fue inválida
+        }
+
+        switch (status_jugada)
+        {
+        case 1:
+            send(partida->jugadores[0], 10, sizeof(10), NULL);
+            close(partida->jugadores[0]);
+            send(partida->jugadores[1], 5, sizeof(5), NULL);
+            // 5 será el código para una derrota
+            close(partida->jugadores[1]);
+            partida_finalizada = 0;
+            break;
+        case 0:
+            send(partida->jugadores[0], 0, sizeof(0), NULL);
+            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[1], 1, sizeof(1), NULL);
+            send(partida->jugadores[0], 2, sizeof(2), NULL);
+            // El 1 es el código para indicar "Te toca jugar"
+            // El 2 es el código para indicar "Te toca esperar"
+
+        default:
+            send(partida->jugadores[0], 200, sizeof(200), NULL);
+            send(partida->jugadores[1], 200, sizeof(200), NULL);
+            close(partida->jugadores[0]);
+            close(partida->jugadores[1]);
+            perror("Resultado de jugada no manejado");
+            break;
+        }
+
+        contador_ddos = 0;
+        recv(partida->jugadores[1], &jugada_buff, sizeof(jugada_buff), NULL);
+        status_jugada = check_jugada(jugada_buff, 'O', partida);
+        while (status_jugada == -1)
+        {
+            if (contador_ddos == 3)
+            {
+                send(partida->jugadores[1], -3, sizeof(-3), NULL);
+                close(partida->jugadores[1]);
+                send(partida->jugadores[0], 10, sizeof(10), NULL);
+                // El código 10 será el de victoria
+                close(partida->jugadores[0]);
+                nExitTask(1);
+            }
+            send(partida->jugadores[1], -1, sizeof(-1), NULL);
+            contador_ddos++;
+            recv(partida->jugadores[1], &jugada_buff, sizeof(jugada_buff), NULL);
+            status_jugada = check_jugada(jugada_buff, 'O', partida);
+        }
+
+        switch (status_jugada)
+        {
+        case 1:
+            send(partida->jugadores[1], 10, sizeof(10), NULL);
+            close(partida->jugadores[1]);
+            send(partida->jugadores[0], 5, sizeof(5), NULL);
+            // 5 será el código para una derrota
+            close(partida->jugadores[0]);
+            partida_finalizada = 1;
+            break;
+        case 0:
+            send(partida->jugadores[1], 0, sizeof(0), NULL);
+            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[0], 1, sizeof(1), NULL);
+            send(partida->jugadores[1], 2, sizeof(2), NULL);
+            break;
+        default:
+            send(partida->jugadores[1], 200, sizeof(200), NULL);
+            send(partida->jugadores[0], 200, sizeof(200), NULL);
+            close(partida->jugadores[1]);
+            close(partida->jugadores[0]);
+            perror("Resultado de jugada no manejado");
+            break;
+        }
+    }
+
+    vaciar_tablero(partida);
+    partida->jugadores[0] = 0;
+    partida->jugadores[1] = 0;
 }
 
 void init_server(int argc, char const *argv[])
@@ -123,7 +376,7 @@ void init_server(int argc, char const *argv[])
     lógica
     */
 
-    while (1)
+    while (partidas_activas < 6)
     {
 
         int cliente_nuevo = accept(socket_server, NULL, NULL);
@@ -131,7 +384,6 @@ void init_server(int argc, char const *argv[])
 
         if (partidas_activas = 5)
         {
-            
         }
 
         clientes_conectados++;
