@@ -17,8 +17,31 @@ struct sockaddr_in
 };
 */
 
+/*
+Creamos los ints para los códigos
+*/
+
+int ESPERANDO_RIVAL = 3;
+int TU_TURNO = 1;
+int ESPERA_TURNO = 2;
+int JUGADA_ACEPTADA = 0;
+int JUGADA_INVALIDA = -1;
+int DERROTA = 5;
+int VICTORIA = 10;
+int DEMASIADOS_ERRORES =-3;
+int ERROR_INTERNO = 200;
+
 int clientes_conectados = 0;
 int partidas_activas = 0;
+const int combinaciones[8][3] = {
+    {0, 1, 2},
+    {3, 4, 5},
+    {6, 7, 8},
+    {0, 3, 6},
+    {1, 4, 7},
+    {2, 5, 8},
+    {0, 4, 8},
+    {2, 4, 6}};
 /*
 Se usan variables globales para
 que los subprocesos también puedan leerlas
@@ -43,7 +66,7 @@ struct Game
 
     */
 
-    int jugadores[2]
+    int jugadores[2];
 };
 
 struct Game *games; // Creamos la estructura global para los juegos
@@ -58,12 +81,9 @@ struct Cola
 void vaciar_tablero(struct Game *game)
 {
     /* Esta función existe para que a la hora de crear un juego, el tablero siempre esté lleno de ' ' */
-    for (int x = 0; x < 3; x++)
+    for (int x = 0; x < 9; x++)
     {
-        for (int y = 0; y < 3; y++)
-        {
-            game->tablero[x] = ' ';
-        }
+        game->tablero[x] = ' ';
     }
 }
 
@@ -74,160 +94,60 @@ void shutdown_server()
 
 int check_jugada(int jugada, char signo_jugador, struct Game *partida)
 {
-    if (jugada > 8 || jugada < 0)
+    // La jugada debe estar entre 0 y 8
+    if (jugada < 0 || jugada > 8)
     {
         return -1;
     }
+
+    // La casilla debe estar vacía
     if (partida->tablero[jugada] != ' ')
     {
-        // Si el espacio donde se quiere hacer una jugada es distinto de ' '
-        // Se retorna -1, indicando una jugada inválida
         return -1;
     }
-    // En caso de que la jugada sea válida se lleva a cabo
-    // y verificamos si estaba en el centro
+
+    // Realizamos la jugada
     partida->tablero[jugada] = signo_jugador;
-    if (jugada == 4)
+
+    /*
+     * Todas las combinaciones posibles para ganar:
+     *
+     * 0 1 2
+     * 3 4 5
+     * 6 7 8
+     *
+     * Filas:
+     * 0-1-2
+     * 3-4-5
+     * 6-7-8
+     *
+     * Columnas:
+     * 0-3-6
+     * 1-4-7
+     * 2-5-8
+     *
+     * Diagonales:
+     * 0-4-8
+     * 2-4-6
+     */
+
+    // Comprobamos las 8 combinaciones
+    for (int i = 0; i < 8; i++)
     {
-        // De ser el caso, comprobamos las diagonales
-        if ((partida->tablero[0] && partida->tablero[8]) == signo_jugador)
+        if (partida->tablero[combinaciones[i][0]] == signo_jugador &&
+            partida->tablero[combinaciones[i][1]] == signo_jugador &&
+            partida->tablero[combinaciones[i][2]] == signo_jugador)
         {
-            return 1; // 1 corresponde con una victoria del jugador en turno
-        }
-        if ((partida->tablero[6] && partida->tablero[2]) == signo_jugador)
-        {
-            return 1;
+            return 1; // Victoria
         }
     }
-    else
-    {
-        // En caso de que no esté en el centro, solo comprobamos las posiciones en forma de +
-        // para esto usaremos un switch que variará según el entero de la jugada
 
-        switch (jugada)
-        {
-        case 0:
-
-            // (partida->tablero[]&&partida->tablero[]) == signo_jugador
-
-            if ((partida->tablero[1] && partida->tablero[2]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[3] && partida->tablero[6]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-
-        case 1:
-            if ((partida->tablero[0] && partida->tablero[2]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[4] && partida->tablero[7]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 2:
-            if ((partida->tablero[0] && partida->tablero[1]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[5] && partida->tablero[8]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 3:
-            if ((partida->tablero[0] && partida->tablero[6]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[4] && partida->tablero[5]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 4:
-            if ((partida->tablero[1] && partida->tablero[7]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[3] && partida->tablero[5]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 5:
-            if ((partida->tablero[2] && partida->tablero[8]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[3] && partida->tablero[4]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 6:
-            if ((partida->tablero[0] && partida->tablero[3]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[7] && partida->tablero[8]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 7:
-            if ((partida->tablero[1] && partida->tablero[4]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[6] && partida->tablero[8]) == signo_jugador)
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        case 8:
-            if ((partida->tablero[2] && partida->tablero[5]) == signo_jugador)
-            {
-                return 1;
-            }
-            if ((partida->tablero[6] && partida->tablero[7]) == signo_jugador)
-            // SIX SEVEEEEEEN
-            {
-                return 1;
-            }
-
-            return 0;
-            break;
-        default:
-            perror("Jugada no verificada\n");
-            break;
-        }
-    }
+    return 0; // Jugada válida, pero no gana
 }
 
 int ejecutar_partida(struct Game *partida)
 {
+    vaciar_tablero(partida->tablero);
     int jugada_buff;
     int partida_finalizada = -1;
     int status_jugada;
@@ -244,14 +164,14 @@ int ejecutar_partida(struct Game *partida)
         {
             if (contador_ddos == 3)
             {
-                send(partida->jugadores[0], -3, sizeof(-3), NULL);
+                send(partida->jugadores[0], &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES), NULL);
                 close(partida->jugadores[0]);
-                send(partida->jugadores[1], 10, sizeof(10), NULL);
+                send(partida->jugadores[1], &VICTORIA, sizeof(VICTORIA), NULL);
                 // El código 10 será el de victoria
                 close(partida->jugadores[1]);
                 nExitTask(1);
             }
-            send(partida->jugadores[0], -1, sizeof(-1), NULL);
+            send(partida->jugadores[0], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), NULL);
             contador_ddos++;
             recv(partida->jugadores[0], &jugada_buff, sizeof(jugada_buff), NULL);
             status_jugada = check_jugada(jugada_buff, 'X', partida);
@@ -261,25 +181,25 @@ int ejecutar_partida(struct Game *partida)
         switch (status_jugada)
         {
         case 1:
-            send(partida->jugadores[0], 10, sizeof(10), NULL);
+            send(partida->jugadores[0], &VICTORIA, sizeof(VICTORIA), NULL);
             close(partida->jugadores[0]);
-            send(partida->jugadores[1], 5, sizeof(5), NULL);
+            send(partida->jugadores[1], &DERROTA, sizeof(DERROTA), NULL);
             // 5 será el código para una derrota
             close(partida->jugadores[1]);
             partida_finalizada = 0;
             break;
         case 0:
-            send(partida->jugadores[0], 0, sizeof(0), NULL);
+            send(partida->jugadores[0], &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), NULL);
             send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), NULL);
             send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), NULL);
-            send(partida->jugadores[1], 1, sizeof(1), NULL);
-            send(partida->jugadores[0], 2, sizeof(2), NULL);
+            send(partida->jugadores[1], &TU_TURNO, sizeof(TU_TURNO), NULL);
+            send(partida->jugadores[0], &ESPERA_TURNO, sizeof(ESPERA_TURNO), NULL);
             // El 1 es el código para indicar "Te toca jugar"
             // El 2 es el código para indicar "Te toca esperar"
-
+            break;
         default:
-            send(partida->jugadores[0], 200, sizeof(200), NULL);
-            send(partida->jugadores[1], 200, sizeof(200), NULL);
+            send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
+            send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
             close(partida->jugadores[0]);
             close(partida->jugadores[1]);
             perror("Resultado de jugada no manejado");
@@ -293,14 +213,14 @@ int ejecutar_partida(struct Game *partida)
         {
             if (contador_ddos == 3)
             {
-                send(partida->jugadores[1], -3, sizeof(-3), NULL);
+                send(partida->jugadores[1], &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES), NULL);
                 close(partida->jugadores[1]);
-                send(partida->jugadores[0], 10, sizeof(10), NULL);
+                send(partida->jugadores[0], &VICTORIA, sizeof(VICTORIA), NULL);
                 // El código 10 será el de victoria
                 close(partida->jugadores[0]);
                 nExitTask(1);
             }
-            send(partida->jugadores[1], -1, sizeof(-1), NULL);
+            send(partida->jugadores[1], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), NULL);
             contador_ddos++;
             recv(partida->jugadores[1], &jugada_buff, sizeof(jugada_buff), NULL);
             status_jugada = check_jugada(jugada_buff, 'O', partida);
@@ -309,33 +229,33 @@ int ejecutar_partida(struct Game *partida)
         switch (status_jugada)
         {
         case 1:
-            send(partida->jugadores[1], 10, sizeof(10), NULL);
+            send(partida->jugadores[1], &VICTORIA, sizeof(VICTORIA), NULL);
             close(partida->jugadores[1]);
-            send(partida->jugadores[0], 5, sizeof(5), NULL);
+            send(partida->jugadores[0], &DERROTA, sizeof(DERROTA), NULL);
             // 5 será el código para una derrota
             close(partida->jugadores[0]);
             partida_finalizada = 1;
             break;
         case 0:
-            send(partida->jugadores[1], 0, sizeof(0), NULL);
+            send(partida->jugadores[1], &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), NULL);
             send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), NULL);
             send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), NULL);
-            send(partida->jugadores[0], 1, sizeof(1), NULL);
-            send(partida->jugadores[1], 2, sizeof(2), NULL);
+            send(partida->jugadores[0], &TU_TURNO, sizeof(TU_TURNO), NULL);
+            send(partida->jugadores[1], &ESPERA_TURNO, sizeof(ESPERA_TURNO), NULL);
             break;
         default:
-            send(partida->jugadores[1], 200, sizeof(200), NULL);
-            send(partida->jugadores[0], 200, sizeof(200), NULL);
+            send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
+            send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
             close(partida->jugadores[1]);
             close(partida->jugadores[0]);
             perror("Resultado de jugada no manejado");
             break;
         }
     }
-
     vaciar_tablero(partida);
     partida->jugadores[0] = 0;
     partida->jugadores[1] = 0;
+    partidas_activas--;
 }
 
 void init_server(int argc, char const *argv[])
@@ -362,6 +282,7 @@ void init_server(int argc, char const *argv[])
     /* Informamos al usuario */
 
     games = malloc(5 * sizeof(*games));
+
     /*Asignamos la memoria para los 5 juegos*/
 
     /* Ahora empezamos a escuchar para que lleguen los usuarios*/
@@ -376,29 +297,29 @@ void init_server(int argc, char const *argv[])
     lógica
     */
 
-    while (partidas_activas < 6)
+    for (;;)
     {
-
         int cliente_nuevo = accept(socket_server, NULL, NULL);
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
-
-        if (partidas_activas = 5)
-        {
-        }
-
         clientes_conectados++;
-        if (cliente_esperando == -1)
-        { /* Si no hay cliente esperando, este empieza a esperar.*/
-            cliente_esperando = cliente_nuevo;
-            send(cliente_esperando, "Esperando contrincante", sizeof("Esperando contrincante"), NULL);
-            continue;
-            /* Se usa un continue para saltarse lo demás y volver a esperar */
+        if (partidas_activas < 5)
+        {
+            if (cliente_esperando == -1)
+            { /* Si no hay cliente esperando, este empieza a esperar.*/
+                cliente_esperando = cliente_nuevo;
+                send(cliente_esperando, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), NULL);
+                // El código 3 corresponderá a "Esperando contrincante"
+                continue;
+                /* Se usa un continue para saltarse lo demás y volver a esperar */
+            }
+            games[partidas_activas].jugadores[0] = cliente_esperando;
+            games[partidas_activas].jugadores[1] = cliente_nuevo;
+
+            cliente_esperando = -1;
+            nEmitTask(ejecutar_partida, &games[partidas_activas]);
+
+            partidas_activas++;
         }
-        games[partidas_activas].jugadores[0] = cliente_esperando;
-        games[partidas_activas].jugadores[1] = cliente_nuevo;
-        partidas_activas++;
-        cliente_esperando = -1;
-        nEmitTask(ejecutar_partida(&games[partidas_activas]));
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
 
