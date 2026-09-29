@@ -60,7 +60,12 @@ int main(int argc, char const *argv[]) {
     printf("¡Conectado exitosamente! Esperando instrucciones del servidor...\n");
 
     struct GameBuffer estado;
-    int fila, columna;
+    
+    // Función para traducir coordenadas (fila, columna) a un índice lineal (0 al 8)
+    int traducir_a_indice(int fila, int columna) {
+    return fila * 3 + columna;
+    }
+
 
     // Bucle principal de juego
     while (1) {
