@@ -56,7 +56,7 @@ struct Game
     la idea es que cada partida tiene su propio tablero
     y un par de sockets para la comunicación con los jugadores
     */
-
+    int uuid;
     char tablero[9];
     /*
     El tablero será representado de la sigueinte manera

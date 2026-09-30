@@ -10,24 +10,24 @@
 #
 
 
-LIBNSYS= ./libs/nsystem64-beta3/lib/
+NSYSTEM=./libs/nsystem64-beta3
 
-CFLAGS= -ggdb -I ./libs/nsystem64-beta3/include -I ./libs/nsystem64-beta3/src
-LFLAGS= -ggdb
+CFLAGS=-ggdb -I$(NSYSTEM)/include -I$(NSYSTEM)/src
+LDFLAGS=-ggdb -L$(NSYSTEM)/lib
+LDLIBS=-lnSys
 
-all: $(APP)
+TARGET=tarea1so
 
-.SUFFIXES:
-.SUFFIXES: .o .c .s
+SRC=src/main.c src/server.c src/client.c
+OBJ=$(SRC:.c=.o)
 
-.c.o .s.o:
-	gcc -c $(CFLAGS) $<
+all: $(TARGET)
 
-$(APP): $(APP).o $(LIBNSYS)
-	gcc $(LFLAGS) $@.o -o $@ $(LIBNSYS)
+$(TARGET): $(OBJ)
+	gcc $(LDFLAGS) $(OBJ) -o $@ $(LDLIBS)
+
+src/%.o: src/%.c
+	gcc -c $(CFLAGS) $< -o $@
 
 clean:
-	rm -f *.o *~ prod-cons
-
-cleanall:
-	rm -f *.o *~ prod-cons 
+	rm -f src/*.o $(TARGET)
