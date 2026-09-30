@@ -19,6 +19,7 @@ LDLIBS=-lnSys
 TARGET=tarea1so
 
 SRC=src/main.c src/server.c src/client.c
+
 OBJ=$(SRC:.c=.o)
 
 all: $(TARGET)
