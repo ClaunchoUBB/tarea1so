@@ -18,7 +18,7 @@ struct sockaddr_in
 */
 
 /*
-Creamos los ints para los códigos
+Creamos los ints para los códigos, son variables dado que los mensajes entre procesos trabajan con direcciones de memoria
 */
 
 int ESPERANDO_RIVAL = 3;
@@ -28,8 +28,9 @@ int JUGADA_ACEPTADA = 0;
 int JUGADA_INVALIDA = -1;
 int DERROTA = 5;
 int VICTORIA = 10;
-int DEMASIADOS_ERRORES =-3;
+int DEMASIADOS_ERRORES = -3;
 int ERROR_INTERNO = 200;
+int EMPATE = 4;
 
 int clientes_conectados = 0;
 int partidas_activas = 0;
@@ -65,7 +66,7 @@ struct Game
     [6][7][8]
 
     */
-
+    int jugadas_realizadas;
     int jugadores[2];
 };
 
@@ -108,6 +109,7 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
 
     // Realizamos la jugada
     partida->tablero[jugada] = signo_jugador;
+    partida->jugadas_realizadas++;
 
     /*
      * Todas las combinaciones posibles para ganar:
@@ -142,7 +144,16 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
         }
     }
 
-    return 0; // Jugada válida, pero no gana
+    if (partida->jugadas_realizadas < 9) // Si llegó a este punto, y no ganó comprobamos si aún no llegan al limite de jugadas
+    {
+        // Si no ha llegado al límite, significa que es una jugada válida, pero nadie gana aún
+        return 0;
+    }
+    else
+    {
+        // En cambio, si llegó al límite y nadie ha ganado, es empate
+        return 4;
+    }
 }
 
 int ejecutar_partida(struct Game *partida)
@@ -151,6 +162,7 @@ int ejecutar_partida(struct Game *partida)
     int jugada_buff;
     int partida_finalizada = -1;
     int status_jugada;
+    partida->jugadas_realizadas = 0;
     int contador_ddos = 0;
     // Este contador evitará que una persona mantenga
     // el juego en su turno abusando de usar jugadas inválidas, tienen 3 oportunidades
@@ -196,6 +208,13 @@ int ejecutar_partida(struct Game *partida)
             send(partida->jugadores[0], &ESPERA_TURNO, sizeof(ESPERA_TURNO), NULL);
             // El 1 es el código para indicar "Te toca jugar"
             // El 2 es el código para indicar "Te toca esperar"
+            break;
+        case 4:
+            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[0], &EMPATE, sizeof(EMPATE), NULL);
+            send(partida->jugadores[1], &EMPATE, sizeof(EMPATE), NULL);
+            partida_finalizada = 1;
             break;
         default:
             send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
@@ -243,6 +262,13 @@ int ejecutar_partida(struct Game *partida)
             send(partida->jugadores[0], &TU_TURNO, sizeof(TU_TURNO), NULL);
             send(partida->jugadores[1], &ESPERA_TURNO, sizeof(ESPERA_TURNO), NULL);
             break;
+        case 4:
+            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), NULL);
+            send(partida->jugadores[0], &EMPATE, sizeof(EMPATE), NULL);
+            send(partida->jugadores[1], &EMPATE, sizeof(EMPATE), NULL);
+            partida_finalizada = 1;
+            break;
         default:
             send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
             send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), NULL);
@@ -258,7 +284,7 @@ int ejecutar_partida(struct Game *partida)
     partidas_activas--;
 }
 
-void init_server(int argc, char const *argv[])
+void init_server()
 {
     struct sockaddr_in direccion_propia;
     direccion_propia.sin_family = AF_INET;
@@ -278,7 +304,7 @@ void init_server(int argc, char const *argv[])
     getsockname(socket_server, (struct sockaddr *)&direccion_propia, &size_direccion_propia);
     /* Le pedimos el nombre para que el usuario conozca el puerto */
 
-    printf("Esperando en todas las interfaces de red\nPuerto:%d \n", direccion_propia.sin_port);
+    printf("Esperando en todas las interfaces de red\nPuerto:%d \n", ntohs(direccion_propia.sin_port));
     /* Informamos al usuario */
 
     games = malloc(5 * sizeof(*games));
