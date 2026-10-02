@@ -11,4 +11,4 @@ El software solicitado es una implementación del juego tres en raya, también l
 
 #### Nota
 
-El grupo está compuesto por tres integrantes con autorización del prof. Fernando Santolaya
+El grupo está compuesto por tres integrantes con autorización del Prof. Fernando Santolaya
