@@ -159,7 +159,7 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
 int ejecutar_partida(struct Game *partida)
 {
     vaciar_tablero(partida);
-    int jugada_buff;
+    int jugada_buffer;
     int partida_finalizada = -1;
     int status_jugada;
     partida->jugadas_realizadas = 0;
@@ -170,8 +170,8 @@ int ejecutar_partida(struct Game *partida)
     // se termina la conexión y se le concede la victoria al otro jugador
     while (partida_finalizada == -1)
     {
-        recv(partida->jugadores[0], &jugada_buff, sizeof(jugada_buff), 0);
-        status_jugada = check_jugada(jugada_buff, 'X', partida);
+        recv(partida->jugadores[0], &jugada_buffer, sizeof(jugada_buffer), 0);
+        status_jugada = check_jugada(jugada_buffer, 'X', partida);
         while (status_jugada == -1)
         {
             if (contador_ddos == 3)
@@ -185,8 +185,8 @@ int ejecutar_partida(struct Game *partida)
             }
             send(partida->jugadores[0], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
             contador_ddos++;
-            recv(partida->jugadores[0], &jugada_buff, sizeof(jugada_buff), 0);
-            status_jugada = check_jugada(jugada_buff, 'X', partida);
+            recv(partida->jugadores[0], &jugada_buffer, sizeof(jugada_buffer), 0);
+            status_jugada = check_jugada(jugada_buffer, 'X', partida);
             // La idea es que el cliente pueda recibir este -1 e indicar al jugador que su jugada fue inválida
         }
 
@@ -226,8 +226,8 @@ int ejecutar_partida(struct Game *partida)
         }
 
         contador_ddos = 0;
-        recv(partida->jugadores[1], &jugada_buff, sizeof(jugada_buff), 0);
-        status_jugada = check_jugada(jugada_buff, 'O', partida);
+        recv(partida->jugadores[1], &jugada_buffer, sizeof(jugada_buffer), 0);
+        status_jugada = check_jugada(jugada_buffer, 'O', partida);
         while (status_jugada == -1)
         {
             if (contador_ddos == 3)
@@ -241,8 +241,8 @@ int ejecutar_partida(struct Game *partida)
             }
             send(partida->jugadores[1], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
             contador_ddos++;
-            recv(partida->jugadores[1], &jugada_buff, sizeof(jugada_buff), 0);
-            status_jugada = check_jugada(jugada_buff, 'O', partida);
+            recv(partida->jugadores[1], &jugada_buffer, sizeof(jugada_buffer), 0);
+            status_jugada = check_jugada(jugada_buffer, 'O', partida);
         }
 
         switch (status_jugada)
@@ -342,8 +342,8 @@ void init_server()
             games[partidas_activas].jugadores[1] = cliente_nuevo;
 
             cliente_esperando = -1;
-            nEmitTask(ejecutar_partida, &games[partidas_activas]);
-
+            // nEmitTask(ejecutar_partida, &games[partidas_activas]);
+            nEmitTask((int (*)())ejecutar_partida, &games[partidas_activas]);
             partidas_activas++;
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
