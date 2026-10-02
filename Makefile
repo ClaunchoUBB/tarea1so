@@ -1,33 +1,28 @@
 # Para usar este Makefile es necesario definir la variable
 # de ambiente NSYSTEM con el directorio en donde se encuentra
-# la raiz de nSystem.  En csh esto se hace con:
-#
-#   setenv NSYSTEM ~cc41b/nSystem95
-#
-# Para compilar ingrese make APP=<ejemplo>
-#
-# Ej: make APP=fibonacci
-#
+# la raiz de nSystem. A MENOS que se emplee simplemente la librería
+# que viene con el código fuente
 
 
-LIBNSYS= ./libs/nsystem64-beta3/lib/
+NSYSTEM ?= ./libs/nsystem64-beta3
 
-CFLAGS= -ggdb -I ./libs/nsystem64-beta3/include -I ./libs/nsystem64-beta3/src
-LFLAGS= -ggdb
+CFLAGS=-ggdb -I$(NSYSTEM)/include -I$(NSYSTEM)/src
+LDFLAGS=-ggdb -L$(NSYSTEM)/lib
+LDLIBS=-lnSys
 
-all: $(APP)
+TARGET=tarea1so
 
-.SUFFIXES:
-.SUFFIXES: .o .c .s
+SRC=src/main.c src/server.c src/client.c
 
-.c.o .s.o:
-	gcc -c $(CFLAGS) $<
+OBJ=$(SRC:.c=.o)
 
-$(APP): $(APP).o $(LIBNSYS)
-	gcc $(LFLAGS) $@.o -o $@ $(LIBNSYS)
+all: $(TARGET)
+
+$(TARGET): $(OBJ)
+	gcc $(LDFLAGS) $(OBJ) -o $@ $(LDLIBS)
+
+src/%.o: src/%.c
+	gcc -c $(CFLAGS) $< -o $@
 
 clean:
-	rm -f *.o *~ prod-cons
-
-cleanall:
-	rm -f *.o *~ prod-cons 
+	rm -f src/*.o $(TARGET)
