@@ -43,6 +43,7 @@ int VICTORIA = 10;
 int DEMASIADOS_ERRORES = -3;
 int ERROR_INTERNO = 200;
 int EMPATE = 4;
+int TERMINADO = 183;
 
 const int combinaciones[8][3] = {
     {0, 1, 2},
@@ -187,144 +188,7 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
         return 4;
     }
 }
-/*
-int ejecutar_partida(struct Game *partida)
-{
-    vaciar_tablero(partida);
-    int jugada_buffer;
-    int partida_finalizada = -1;
-    int status_jugada;
-    partida->jugadas_realizadas = 0;
-    int contador_ddos = 0;
-    // Este contador evitará que una persona mantenga
-    // el juego en su turno abusando de usar jugadas inválidas, tienen 3 oportunidades
-    // para hacer una jugada válida, si la tercera no es válida
-    // se termina la conexión y se le concede la victoria al otro jugador
-    while (partida_finalizada == -1)
-    {
-        recv(partida->jugadores[0], &jugada_buffer, sizeof(jugada_buffer), 0);
-        status_jugada = check_jugada(jugada_buffer, 'X', partida);
-        while (status_jugada == -1)
-        {
-            if (contador_ddos == 3)
-            {
-                send(partida->jugadores[0], &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES), 0);
-                close(partida->jugadores[0]);
-                send(partida->jugadores[1], &VICTORIA, sizeof(VICTORIA), 0);
-                // El código 10 será el de victoria
-                close(partida->jugadores[1]);
 
-                partida->jugadores[0] = -1;
-                partida->jugadores[1] = -1;
-                partida->libre = 1;
-
-                nExitTask(1);
-            }
-            send(partida->jugadores[0], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
-            contador_ddos++;
-            recv(partida->jugadores[0], &jugada_buffer, sizeof(jugada_buffer), 0);
-            status_jugada = check_jugada(jugada_buffer, 'X', partida);
-            // La idea es que el cliente pueda recibir este -1 e indicar al jugador que su jugada fue inválida
-        }
-
-        switch (status_jugada)
-        {
-        case 1:
-            send(partida->jugadores[0], &VICTORIA, sizeof(VICTORIA), 0);
-            close(partida->jugadores[0]);
-            send(partida->jugadores[1], &DERROTA, sizeof(DERROTA), 0);
-            // 5 será el código para una derrota
-            close(partida->jugadores[1]);
-            partida_finalizada = 1;
-            continue;
-        case 0:
-            send(partida->jugadores[0], &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), 0);
-            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[1], &TU_TURNO, sizeof(TU_TURNO), 0);
-            send(partida->jugadores[0], &ESPERA_TURNO, sizeof(ESPERA_TURNO), 0);
-            // El 1 es el código para indicar "Te toca jugar"
-            // El 2 es el código para indicar "Te toca esperar"
-            break;
-        case 4:
-            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[0], &EMPATE, sizeof(EMPATE), 0);
-            send(partida->jugadores[1], &EMPATE, sizeof(EMPATE), 0);
-            partida_finalizada = 1;
-            continue;
-
-        default:
-            send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
-            send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
-            close(partida->jugadores[0]);
-            close(partida->jugadores[1]);
-            perror("Resultado de jugada no manejado");
-            continue;
-        }
-
-        contador_ddos = 0;
-        recv(partida->jugadores[1], &jugada_buffer, sizeof(jugada_buffer), 0);
-        status_jugada = check_jugada(jugada_buffer, 'O', partida);
-        while (status_jugada == -1)
-        {
-            if (contador_ddos == 3)
-            {
-                send(partida->jugadores[1], &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES), 0);
-                close(partida->jugadores[1]);
-                send(partida->jugadores[0], &VICTORIA, sizeof(VICTORIA), 0);
-                // El código 10 será el de victoria
-                close(partida->jugadores[0]);
-                partida->jugadores[0] = -1;
-                partida->jugadores[1] = -1;
-                partida->libre = 1;
-                nExitTask(1);
-            }
-            send(partida->jugadores[1], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
-            contador_ddos++;
-            recv(partida->jugadores[1], &jugada_buffer, sizeof(jugada_buffer), 0);
-            status_jugada = check_jugada(jugada_buffer, 'O', partida);
-        }
-
-        switch (status_jugada)
-        {
-        case 1:
-            send(partida->jugadores[1], &VICTORIA, sizeof(VICTORIA), 0);
-            close(partida->jugadores[1]);
-            send(partida->jugadores[0], &DERROTA, sizeof(DERROTA), 0);
-            // 5 será el código para una derrota
-            close(partida->jugadores[0]);
-            partida_finalizada = 1;
-            continue;
-        case 0:
-            send(partida->jugadores[1], &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), 0);
-            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[0], &TU_TURNO, sizeof(TU_TURNO), 0);
-            send(partida->jugadores[1], &ESPERA_TURNO, sizeof(ESPERA_TURNO), 0);
-            break;
-        case 4:
-            send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), 0);
-            send(partida->jugadores[0], &EMPATE, sizeof(EMPATE), 0);
-            send(partida->jugadores[1], &EMPATE, sizeof(EMPATE), 0);
-            partida_finalizada = 1;
-            continue;
-        default:
-            send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
-            send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
-            close(partida->jugadores[1]);
-            close(partida->jugadores[0]);
-            perror("Resultado de jugada no manejado");
-            continue;
-        }
-    }
-    vaciar_tablero(partida);
-    partida->jugadores[0] = -1;
-    partida->jugadores[1] = -1;
-    partida->libre = 1;
-}
-*/
 int jugar_partida(struct Game *partida)
 {
     const char signos[2] = {'X', 'O'};
@@ -400,6 +264,7 @@ int jugar_partida(struct Game *partida)
     }
 }
 
+
 int buscar_slot(struct Game *partidas)
 {
     for (int i = 0; i < 5; i++)
@@ -409,10 +274,9 @@ int buscar_slot(struct Game *partidas)
             return i;
         }
     }
-    return -1;
 }
 
-void init_server()
+void server()
 {
     struct sockaddr_in direccion_propia;
     direccion_propia.sin_family = AF_INET;
@@ -457,7 +321,7 @@ void init_server()
 
     listen(socket_server, 10);
 
-    int cliente_esperando = -1;
+    int cliente2 = -1;
 
     /*
     Creamos una conexión en -1, de esta manera, cuando el accept()
@@ -465,36 +329,59 @@ void init_server()
     trabajar de forma lógica
     */
 
-    for (;;)
+    for (;;) // Demonizamos
     {
-
-        int cliente_nuevo = accept(socket_server, NULL, NULL);
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
         int slot_libre = buscar_slot(games);
         if (slot_libre != -1)
         {
-            if (cliente_esperando == -1)
-            { /* Si no hay cliente esperando, este empieza a esperar.*/
-                cliente_esperando = cliente_nuevo;
-                send(cliente_esperando, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0);
-                // El código 3 corresponderá a "Esperando contrincante"
-                continue;
-                /* Se usa un continue para saltarse lo demás y volver a esperar */
+            int cliente1;
+            int cliente2;
+            if (LengthFifoQueue(en_espera) != 0 && ((LengthFifoQueue(en_espera) % 2) == 0))
+            // Si esto se cumple significa que queda un número par en la cola,
+            // por lo que los puedo colocar en partida
+            {
+                cliente1 = GetObj(en_espera);
+                cliente2 = GetObj(en_espera);
             }
-            games[slot_libre].jugadores[0] = cliente_esperando;
-            games[slot_libre].jugadores[1] = cliente_nuevo;
+            else
+            {
+                int cliente1 = accept(socket_server, NULL, NULL);
+                if (cliente2 == -1)
+                { /* Si no hay cliente esperando, este empieza a esperar.*/
+                    cliente2 = cliente1;
+                    send(cliente2, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0);
+                    // El código 3 corresponderá a "Esperando contrincante"
+                    continue;
+                    /* Se usa un continue para saltarse lo demás y volver a esperar */
+                }
+            }
+
+            games[slot_libre].jugadores[0] = cliente2;
+            games[slot_libre].jugadores[1] = cliente1;
             games[slot_libre].game_id = siguiente_game_id++;
-            cliente_esperando = -1;
+            cliente2 = -1;
             games[slot_libre].libre = 0;
             nTask partida = nEmitTask((int (*)())jugar_partida, &games[slot_libre]);
         }
         else
         {
+            int cliente_nuevo = accept(socket_server,NULL,NULL);
             PutObj(en_espera, &cliente_nuevo);
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
-    close(cliente_esperando);
+
+    if (LengthFifoQueue(en_espera)!=0)
+    {
+        for (size_t i = 0; i < LengthFifoQueue; i++)
+        {
+            close((int)GetObj(en_espera));
+        }
+        
+    }
+    DestroyFifoQueue(en_espera);
+    close(cliente2);
     shutdown_server(socket_server);
     /* Aquí matamos todos los sockets */
 }
