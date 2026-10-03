@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <signal.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <strings.h>
@@ -18,15 +21,7 @@
 
 */
 
-/*
-struct sockaddr_in
-{
-    short int sin_family;      AF_INET
-    unsigned short sin_port;   Número de puerto
-    struct in_addr sin_addr;   Dirección IP
-    unsigned char sin_zero[8]; Relleno con 0
-};
-*/
+#define NUM_PARTIDAS 5
 
 /*
 Creamos los ints para los códigos, son variables dado que
@@ -55,35 +50,108 @@ const int combinaciones[8][3] = {
     {2, 5, 8},
     {0, 4, 8},
     {2, 4, 6}};
-/*
-Se usan variables globales para
-que los subprocesos también puedan leerlas
-*/
 
 struct Game
 {
-    /*
-    Estructura básica
-    para la gestión de las partidas
-    la idea es que cada partida tiene su propio tablero
-    y un par de sockets para la comunicación con los jugadores
-    */
     int game_id;
     int libre;
     char tablero[9];
     /*
-    El tablero será representado de la sigueinte manera
-
     [0][1][2]
     [3][4][5]  == [0][1][2][3][4][5][6][7][8]
     [6][7][8]
     */
-
     int jugadas_realizadas;
     int jugadores[2];
 };
 
-struct Game *games; // Creamos la estructura global para los juegos
+struct Game *games = NULL; // Estructura global para los juegos
+
+/* ------------------------------------------------------------------ */
+/*  Utilidades de I/O con manejo de errores                            */
+/* ------------------------------------------------------------------ */
+
+/*
+Envía exactamente n bytes. Retorna 0 si todo salió bien y -1 si el
+cliente se desconectó o hubo un error (ya informado por stderr).
+Un send() puede enviar menos bytes de los pedidos, por eso el ciclo.
+*/
+static int enviar_todo(int fd, const void *buf, size_t n)
+{
+    const char *p = buf;
+    size_t enviado = 0;
+
+    while (enviado < n)
+    {
+        ssize_t r = send(fd, p + enviado, n - enviado, 0);
+        if (r < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            if (errno != EPIPE && errno != ECONNRESET)
+            {
+                perror("send");
+            }
+            return -1;
+        }
+        if (r == 0)
+        {
+            return -1;
+        }
+        enviado += (size_t)r;
+    }
+    return 0;
+}
+
+/*
+Recibe exactamente n bytes. Retorna 0 si todo salió bien y -1 si el
+cliente cerró la conexión (recv == 0) o hubo un error.
+*/
+static int recibir_todo(int fd, void *buf, size_t n)
+{
+    char *p = buf;
+    size_t recibido = 0;
+
+    while (recibido < n)
+    {
+        ssize_t r = recv(fd, p + recibido, n - recibido, 0);
+        if (r < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            if (errno != ECONNRESET)
+            {
+                perror("recv");
+            }
+            return -1;
+        }
+        if (r == 0)
+        {
+            /* El cliente cerró la conexión antes de tiempo */
+            return -1;
+        }
+        recibido += (size_t)r;
+    }
+    return 0;
+}
+
+static void cerrar_fd(int *fd)
+{
+    if (*fd != -1)
+    {
+        if (close(*fd) < 0)
+        {
+            perror("close");
+        }
+        *fd = -1;
+    }
+}
+
+/* ------------------------------------------------------------------ */
 
 void vaciar_tablero(struct Game *game)
 {
@@ -100,31 +168,26 @@ void shutdown_server(int socket_server)
      Cerramos los sockets de los jugadores que todavía
      estén asociados a una partida.
     */
-    for (int i = 0; i < 5; i++)
+    if (games != NULL)
     {
-        if (games[i].libre == 0)
+        for (int i = 0; i < NUM_PARTIDAS; i++)
         {
-            if (games[i].jugadores[0] != -1)
+            if (games[i].libre == 0)
             {
-                close(games[i].jugadores[0]);
-            }
-
-            if (games[i].jugadores[1] != -1)
-            {
-                close(games[i].jugadores[1]);
+                cerrar_fd(&games[i].jugadores[0]);
+                cerrar_fd(&games[i].jugadores[1]);
             }
         }
+
+        free(games);
+        games = NULL;
     }
 
-    /*
-     Liberamos la memoria reservada para las partidas.
-    */
-    free(games);
-
-    /*
-     Cerramos el socket principal del servidor.
-    */
-    close(socket_server);
+    /* Cerramos el socket principal del servidor. */
+    if (socket_server >= 0)
+    {
+        close(socket_server);
+    }
 }
 
 int check_jugada(int jugada, char signo_jugador, struct Game *partida)
@@ -145,28 +208,6 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
     partida->tablero[jugada] = signo_jugador;
     partida->jugadas_realizadas++;
 
-    /*
-     * Todas las combinaciones posibles para ganar:
-     *
-     * 0 1 2
-     * 3 4 5
-     * 6 7 8
-     *
-     * Filas:
-     * 0-1-2
-     * 3-4-5
-     * 6-7-8
-     *
-     * Columnas:
-     * 0-3-6
-     * 1-4-7
-     * 2-5-8
-     *
-     * Diagonales:
-     * 0-4-8
-     * 2-4-6
-     */
-
     // Comprobamos las 8 combinaciones
     for (int i = 0; i < 8; i++)
     {
@@ -178,18 +219,49 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
         }
     }
 
-    if (partida->jugadas_realizadas < 9) // Si llegó a este punto, y no ganó comprobamos si aún no llegan al limite de jugadas
+    if (partida->jugadas_realizadas < 9)
     {
-        // Si no ha llegado al límite, significa que es una jugada válida, pero nadie gana aún
+        // Jugada válida, nadie gana aún
         return 0;
     }
     else
     {
-        // En cambio, si llegó al límite y nadie ha ganado, es empate
+        // Se llegó al límite sin ganador: empate
         return 4;
     }
 }
 
+/*
+Termina la partida porque el jugador "caido" se desconectó o falló su
+socket. Se cierra su conexión y, si el rival sigue conectado, se le
+avisa que ganó por abandono. Retorna -2.
+*/
+static int abandono(struct Game *partida, int caido)
+{
+    fprintf(stderr, "[partida %d] jugador %d desconectado, gana el rival\n",
+            partida->game_id, caido);
+
+    cerrar_fd(&partida->jugadores[caido]);
+    /* Si el rival también está caído, este send falla y no pasa nada */
+    enviar_todo(partida->jugadores[1 - caido], &VICTORIA, sizeof(VICTORIA));
+    cerrar_fd(&partida->jugadores[1 - caido]);
+    return -2;
+}
+
+/* Cierra ambos sockets de una partida que terminó normalmente */
+static void cerrar_partida(struct Game *partida)
+{
+    cerrar_fd(&partida->jugadores[0]);
+    cerrar_fd(&partida->jugadores[1]);
+}
+
+/*
+Retorna:
+   0  partida terminada normalmente (victoria o empate)
+   1  terminó por exceso de jugadas inválidas
+  -1  error interno
+  -2  terminó por desconexión de un jugador
+*/
 int jugar_partida(struct Game *partida)
 {
     const char signos[2] = {'X', 'O'};
@@ -207,57 +279,72 @@ int jugar_partida(struct Game *partida)
         int b = partida->jugadores[1 - turno]; // espera
         contador_errores = 0;
 
-        recv(a, &jugada_buffer, sizeof(jugada_buffer), 0);
+        if (recibir_todo(a, &jugada_buffer, sizeof(jugada_buffer)) < 0)
+        {
+            return abandono(partida, turno);
+        }
         status_jugada = check_jugada(jugada_buffer, signos[turno], partida);
 
         while (status_jugada == -1)
         {
             if (contador_errores == 3)
             {
-                send(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES), 0);
-                close(a);
-                send(b, &VICTORIA, sizeof(VICTORIA), 0);
-                close(b);
+                /* Envíos "mejor esfuerzo": la partida termina igual */
+                enviar_todo(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES));
+                enviar_todo(b, &VICTORIA, sizeof(VICTORIA));
+                cerrar_partida(partida);
                 return 1;
             }
-            send(a, &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
+            if (enviar_todo(a, &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA)) < 0)
+            {
+                return abandono(partida, turno);
+            }
             contador_errores++;
-            recv(a, &jugada_buffer, sizeof(jugada_buffer), 0);
+            if (recibir_todo(a, &jugada_buffer, sizeof(jugada_buffer)) < 0)
+            {
+                return abandono(partida, turno);
+            }
             status_jugada = check_jugada(jugada_buffer, signos[turno], partida);
         }
 
         switch (status_jugada)
         {
         case 1: // Victoria de a
-            send(a, &VICTORIA, sizeof(VICTORIA), 0);
-            send(b, &DERROTA, sizeof(DERROTA), 0);
-            close(a);
-            close(b);
+            enviar_todo(a, &VICTORIA, sizeof(VICTORIA));
+            enviar_todo(b, &DERROTA, sizeof(DERROTA));
+            cerrar_partida(partida);
             return 0;
 
         case 4: // Empate
-            send(a, partida->tablero, sizeof(partida->tablero), 0);
-            send(b, partida->tablero, sizeof(partida->tablero), 0);
-            send(a, &EMPATE, sizeof(EMPATE), 0);
-            send(b, &EMPATE, sizeof(EMPATE), 0);
-            close(a);
-            close(b);
+            enviar_todo(a, partida->tablero, sizeof(partida->tablero));
+            enviar_todo(b, partida->tablero, sizeof(partida->tablero));
+            enviar_todo(a, &EMPATE, sizeof(EMPATE));
+            enviar_todo(b, &EMPATE, sizeof(EMPATE));
+            cerrar_partida(partida);
             return 0;
 
         case 0: // Jugada válida, la partida sigue
-            send(a, &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), 0);
-            send(a, partida->tablero, sizeof(partida->tablero), 0);
-            send(b, partida->tablero, sizeof(partida->tablero), 0);
-            send(b, &TU_TURNO, sizeof(TU_TURNO), 0);
-            send(a, &ESPERA_TURNO, sizeof(ESPERA_TURNO), 0);
+            if (enviar_todo(a, &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA)) < 0 ||
+                enviar_todo(a, partida->tablero, sizeof(partida->tablero)) < 0)
+            {
+                return abandono(partida, turno);
+            }
+            if (enviar_todo(b, partida->tablero, sizeof(partida->tablero)) < 0 ||
+                enviar_todo(b, &TU_TURNO, sizeof(TU_TURNO)) < 0)
+            {
+                return abandono(partida, 1 - turno);
+            }
+            if (enviar_todo(a, &ESPERA_TURNO, sizeof(ESPERA_TURNO)) < 0)
+            {
+                return abandono(partida, turno);
+            }
             break;
 
         default:
-            send(a, &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
-            send(b, &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
-            close(a);
-            close(b);
-            perror("Resultado de jugada no manejado");
+            enviar_todo(a, &ERROR_INTERNO, sizeof(ERROR_INTERNO));
+            enviar_todo(b, &ERROR_INTERNO, sizeof(ERROR_INTERNO));
+            cerrar_partida(partida);
+            fprintf(stderr, "Resultado de jugada no manejado: %d\n", status_jugada);
             return -1;
         }
 
@@ -265,125 +352,190 @@ int jugar_partida(struct Game *partida)
     }
 }
 
+/*
+Tarea que ejecuta una partida completa y, al terminar, deja libre el slot.
+Es lo último que hace, después de haber cerrado los sockets.
+*/
+int tarea_partida(struct Game *partida)
+{
+    int resultado = jugar_partida(partida);
+    partida->game_id = -1;
+    partida->libre = 1;
+    return resultado;
+}
 
 int buscar_slot(struct Game *partidas)
 {
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < NUM_PARTIDAS; i++)
     {
         if (partidas[i].libre == 1)
         {
             return i;
         }
     }
+    return -1;
+}
+
+/* Saca un cliente (fd) de la cola de espera y libera su nodo */
+static int sacar_cliente(FifoQueue cola)
+{
+    int *p = GetObj(cola);
+    int fd = *p;
+    free(p);
+    return fd;
+}
+
+/* Asigna dos clientes a un slot y lanza la tarea de la partida */
+static void iniciar_partida(int slot, int fd0, int fd1, int *siguiente_game_id)
+{
+    games[slot].jugadores[0] = fd0;
+    games[slot].jugadores[1] = fd1;
+    games[slot].game_id = (*siguiente_game_id)++;
+    games[slot].libre = 0;
+
+    nTask t = nEmitTask((int (*)())tarea_partida, &games[slot]);
+    if (t == NULL)
+    {
+        fprintf(stderr, "No se pudo crear la tarea de la partida %d\n", games[slot].game_id);
+        cerrar_fd(&games[slot].jugadores[0]);
+        cerrar_fd(&games[slot].jugadores[1]);
+        games[slot].game_id = -1;
+        games[slot].libre = 1;
+    }
 }
 
 void server()
 {
     struct sockaddr_in direccion_propia;
+    socklen_t size_direccion_propia = sizeof(direccion_propia);
+    FifoQueue en_espera = MakeFifoQueue();
+    int siguiente_game_id = 1;
+    int socket_server = -1;
+
+    /*
+    Si un cliente se desconecta y le hacemos send(), el SO manda SIGPIPE
+    y mataría todo el servidor. Lo ignoramos: send() retornará -1 con EPIPE.
+    */
+    signal(SIGPIPE, SIG_IGN);
+
     direccion_propia.sin_family = AF_INET;
     direccion_propia.sin_port = 0;
     direccion_propia.sin_addr.s_addr = htonl(INADDR_ANY);
     bzero(&(direccion_propia.sin_zero), 8);
-    FifoQueue en_espera = MakeFifoQueue();
-    socklen_t size_direccion_propia = sizeof(direccion_propia);
-    int siguiente_game_id = 1;
-    int socket_server;
+
+    /* Creamos el fichero descriptor del socket */
     socket_server = socket(AF_INET, SOCK_STREAM, 0);
-    /* Creamos el fichero descriptor del socket*/
+    if (socket_server < 0)
+    {
+        perror("socket");
+        goto fin;
+    }
 
-    bind(socket_server, (struct sockaddr *)(&direccion_propia), size_direccion_propia);
-    /* Enlazamos el fichero descriptor del socket con la socket adress de entrada*/
+    /* Enlazamos el socket con la dirección de entrada */
+    if (bind(socket_server, (struct sockaddr *)(&direccion_propia), size_direccion_propia) < 0)
+    {
+        perror("bind");
+        goto fin;
+    }
 
-    getsockname(socket_server, (struct sockaddr *)&direccion_propia, &size_direccion_propia);
     /* Le pedimos el nombre para que el usuario conozca el puerto */
+    if (getsockname(socket_server, (struct sockaddr *)&direccion_propia, &size_direccion_propia) < 0)
+    {
+        perror("getsockname");
+        goto fin;
+    }
 
     printf("Esperando en todas las interfaces de red\nPuerto:%d \n", ntohs(direccion_propia.sin_port));
-    /* Informamos al usuario */
 
     /* Alojamos las partidas en la memoria */
-    games = malloc(5 * sizeof(*games));
-
-    for (int x = 0; x < 5; x++)
+    games = malloc(NUM_PARTIDAS * sizeof(*games));
+    if (games == NULL)
     {
-        /* Indicamos que cada juego se encuentra actualmente libre */
+        perror("malloc");
+        goto fin;
+    }
+
+    for (int x = 0; x < NUM_PARTIDAS; x++)
+    {
         vaciar_tablero(&games[x]);
         games[x].libre = 1;
-        /* Dejamos los sockets en -1 por convención */
         games[x].jugadores[0] = -1;
         games[x].jugadores[1] = -1;
-
-        /* La partida aún no tiene un identificador */
         games[x].game_id = -1;
-        /* Cada partida tiene un contador de jugadas para verificar empates */
         games[x].jugadas_realizadas = 0;
     }
 
-    /* Ahora empezamos a escuchar para que lleguen los usuarios*/
-
-    listen(socket_server, 10);
-
-    int cliente2 = -1;
-
-    /*
-    Creamos una conexión en -1, de esta manera, cuando el accept()
-    reciba una conexión real, actualizará el valor y se podrá
-    trabajar de forma lógica
-    */
+    /* Ahora empezamos a escuchar para que lleguen los usuarios */
+    if (listen(socket_server, 10) < 0)
+    {
+        perror("listen");
+        goto fin;
+    }
 
     for (;;) // Demonizamos
     {
-        /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
-        int slot_libre = buscar_slot(games);
-        if (slot_libre != -1)
+        int cliente = accept(socket_server, NULL, NULL);
+        if (cliente < 0)
         {
-            int cliente1;
-            int cliente2;
-            if (LengthFifoQueue(en_espera) != 0 && ((LengthFifoQueue(en_espera) % 2) == 0))
-            // Si esto se cumple significa que queda un número par en la cola,
-            // por lo que los puedo colocar en partida
+            if (errno == EINTR || errno == ECONNABORTED)
             {
-                cliente1 = GetObj(en_espera);
-                cliente2 = GetObj(en_espera);
+                /* Errores transitorios: el cliente se fue antes del accept */
+                continue;
             }
-            else
-            {
-                int cliente1 = accept(socket_server, NULL, NULL);
-                if (cliente2 == -1)
-                { /* Si no hay cliente esperando, este empieza a esperar.*/
-                    cliente2 = cliente1;
-                    send(cliente2, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0);
-                    // El código 3 corresponderá a "Esperando contrincante"
-                    continue;
-                    /* Se usa un continue para saltarse lo demás y volver a esperar */
-                }
-            }
+            perror("accept");
+            break; /* Error grave: cerramos de forma controlada */
+        }
 
-            games[slot_libre].jugadores[0] = cliente2;
-            games[slot_libre].jugadores[1] = cliente1;
-            games[slot_libre].game_id = siguiente_game_id++;
-            cliente2 = -1;
-            games[slot_libre].libre = 0;
-            nTask partida = nEmitTask((int (*)())jugar_partida, &games[slot_libre]);
-        }
-        else
+        /*
+        Avisamos al cliente su estado:
+        - sin slots libres -> ESPERA
+        - hay slot y nadie esperando -> ESPERANDO_RIVAL
+        - hay slot y ya hay alguien esperando -> se emparejan, sin mensaje
+        */
+        int slot = buscar_slot(games);
+        int *aviso = NULL;
+        if (slot == -1)
         {
-            int cliente_nuevo = accept(socket_server,NULL,NULL);
-            send(cliente_nuevo, &ESPERA,sizeof(ESPERA),0);
-            PutObj(en_espera, &cliente_nuevo);
+            aviso = &ESPERA;
         }
-        /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
+        else if (LengthFifoQueue(en_espera) == 0)
+        {
+            aviso = &ESPERANDO_RIVAL;
+        }
+
+        if (aviso != NULL && enviar_todo(cliente, aviso, sizeof(*aviso)) < 0)
+        {
+            fprintf(stderr, "Cliente se desconectó antes de entrar a la cola\n");
+            close(cliente);
+            continue;
+        }
+
+        int *copia = malloc(sizeof(int));
+        if (copia == NULL)
+        {
+            perror("malloc");
+            close(cliente);
+            continue;
+        }
+        *copia = cliente;
+        PutObj(en_espera, copia);
+
+        /* Mientras haya dos clientes esperando y un slot libre, armamos partidas */
+        while (LengthFifoQueue(en_espera) >= 2 && (slot = buscar_slot(games)) != -1)
+        {
+            int fd0 = sacar_cliente(en_espera);
+            int fd1 = sacar_cliente(en_espera);
+            iniciar_partida(slot, fd0, fd1, &siguiente_game_id);
+        }
     }
 
-    if (LengthFifoQueue(en_espera)!=0)
+fin:
+    /* Cerramos los clientes que seguían en la cola de espera */
+    while (LengthFifoQueue(en_espera) > 0)
     {
-        for (size_t i = 0; i < LengthFifoQueue; i++)
-        {
-            close((int)GetObj(en_espera));
-        }
-        
+        int fd = sacar_cliente(en_espera);
+        close(fd);
     }
     DestroyFifoQueue(en_espera);
-    close(cliente2);
     shutdown_server(socket_server);
-    /* Aquí matamos todos los sockets */
 }
