@@ -3,14 +3,18 @@
 # la raiz de nSystem. A MENOS que se emplee simplemente la librería
 # que viene con el código fuente
 
-
+#T1
+#4 de Octubre 2026
+#Claudio Rodríguez Parra
+#Jesús Vivanco Zambrano
+#Luciano Venegas Castro
 NSYSTEM ?= ./libs/nsystem64-beta3
 
 CFLAGS=-ggdb -I$(NSYSTEM)/include -I$(NSYSTEM)/src
 LDFLAGS=-ggdb -L$(NSYSTEM)/lib
 LDLIBS=-lnSys
 
-TARGET=tarea1so
+TARGET=T1_crp_jvz_lvc
 
 SRC=src/main.c src/server.c src/client.c
 

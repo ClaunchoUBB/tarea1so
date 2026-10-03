@@ -6,6 +6,16 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+/*
+
+#T1
+#4 de Octubre 2026
+#Claudio Rodríguez Parra
+#Jesús Vivanco Zambrano
+#Luciano Venegas Castro
+
+*/
+
 // Definimos la estructura del tablero exactamente igual que en el servidor
 struct GameBuffer
 {
@@ -70,11 +80,6 @@ int main(int argc, char const *argv[])
 
     struct GameBuffer estado;
 
-    // Función para traducir coordenadas (fila, columna) a un índice lineal (0 al 8)
-    int traducir_a_indice(int fila, int columna){
-        return fila * 3 + columna;
-    }
-
     // Bucle principal de juego
     while (1)
     {
@@ -132,4 +137,10 @@ int main(int argc, char const *argv[])
     // Cerrar socket
     close(socketfd);
     return 0;
+}
+
+// Función para traducir coordenadas (fila, columna) a un índice lineal (0 al 8)
+int traducir_a_indice(int fila, int columna)
+{
+    return fila * 3 + columna;
 }

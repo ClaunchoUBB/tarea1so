@@ -6,6 +6,17 @@
 #include <unistd.h>
 #include <strings.h>
 #include <nSystem.h>
+#include <fifoqueues.h>
+
+/*
+
+#T1
+#4 de Octubre 2026
+#Claudio Rodríguez Parra
+#Jesús Vivanco Zambrano
+#Luciano Venegas Castro
+
+*/
 
 /*
 struct sockaddr_in
@@ -18,7 +29,8 @@ struct sockaddr_in
 */
 
 /*
-Creamos los ints para los códigos, son variables dado que los mensajes entre procesos trabajan con direcciones de memoria
+Creamos los ints para los códigos, son variables dado que
+los mensajes entre procesos trabajan con direcciones de memoria
 */
 
 int ESPERANDO_RIVAL = 3;
@@ -32,7 +44,6 @@ int DEMASIADOS_ERRORES = -3;
 int ERROR_INTERNO = 200;
 int EMPATE = 4;
 
-int clientes_conectados = 0;
 const int combinaciones[8][3] = {
     {0, 1, 2},
     {3, 4, 5},
@@ -71,13 +82,6 @@ struct Game
 };
 
 struct Game *games; // Creamos la estructura global para los juegos
-
-struct Cola
-{
-    int clientes_encolados[2];
-    int front;
-    int back;
-};
 
 void vaciar_tablero(struct Game *game)
 {
@@ -120,6 +124,7 @@ void shutdown_server(int socket_server)
     */
     close(socket_server);
 }
+
 int check_jugada(int jugada, char signo_jugador, struct Game *partida)
 {
     // La jugada debe estar entre 0 y 8
@@ -182,7 +187,7 @@ int check_jugada(int jugada, char signo_jugador, struct Game *partida)
         return 4;
     }
 }
-
+/*
 int ejecutar_partida(struct Game *partida)
 {
     vaciar_tablero(partida);
@@ -208,6 +213,11 @@ int ejecutar_partida(struct Game *partida)
                 send(partida->jugadores[1], &VICTORIA, sizeof(VICTORIA), 0);
                 // El código 10 será el de victoria
                 close(partida->jugadores[1]);
+
+                partida->jugadores[0] = -1;
+                partida->jugadores[1] = -1;
+                partida->libre = 1;
+
                 nExitTask(1);
             }
             send(partida->jugadores[0], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
@@ -225,8 +235,8 @@ int ejecutar_partida(struct Game *partida)
             send(partida->jugadores[1], &DERROTA, sizeof(DERROTA), 0);
             // 5 será el código para una derrota
             close(partida->jugadores[1]);
-            partida_finalizada = 0;
-            break;
+            partida_finalizada = 1;
+            continue;
         case 0:
             send(partida->jugadores[0], &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), 0);
             send(partida->jugadores[0], partida->tablero, sizeof(partida->tablero), 0);
@@ -242,14 +252,15 @@ int ejecutar_partida(struct Game *partida)
             send(partida->jugadores[0], &EMPATE, sizeof(EMPATE), 0);
             send(partida->jugadores[1], &EMPATE, sizeof(EMPATE), 0);
             partida_finalizada = 1;
-            break;
+            continue;
+
         default:
             send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
             send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
             close(partida->jugadores[0]);
             close(partida->jugadores[1]);
             perror("Resultado de jugada no manejado");
-            break;
+            continue;
         }
 
         contador_ddos = 0;
@@ -264,6 +275,9 @@ int ejecutar_partida(struct Game *partida)
                 send(partida->jugadores[0], &VICTORIA, sizeof(VICTORIA), 0);
                 // El código 10 será el de victoria
                 close(partida->jugadores[0]);
+                partida->jugadores[0] = -1;
+                partida->jugadores[1] = -1;
+                partida->libre = 1;
                 nExitTask(1);
             }
             send(partida->jugadores[1], &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
@@ -281,7 +295,7 @@ int ejecutar_partida(struct Game *partida)
             // 5 será el código para una derrota
             close(partida->jugadores[0]);
             partida_finalizada = 1;
-            break;
+            continue;
         case 0:
             send(partida->jugadores[1], &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), 0);
             send(partida->jugadores[1], partida->tablero, sizeof(partida->tablero), 0);
@@ -295,20 +309,95 @@ int ejecutar_partida(struct Game *partida)
             send(partida->jugadores[0], &EMPATE, sizeof(EMPATE), 0);
             send(partida->jugadores[1], &EMPATE, sizeof(EMPATE), 0);
             partida_finalizada = 1;
-            break;
+            continue;
         default:
             send(partida->jugadores[1], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
             send(partida->jugadores[0], &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
             close(partida->jugadores[1]);
             close(partida->jugadores[0]);
             perror("Resultado de jugada no manejado");
-            break;
+            continue;
         }
     }
     vaciar_tablero(partida);
-    partida->jugadores[0] = 0;
-    partida->jugadores[1] = 0;
+    partida->jugadores[0] = -1;
+    partida->jugadores[1] = -1;
     partida->libre = 1;
+}
+*/
+int jugar_partida(struct Game *partida)
+{
+    const char signos[2] = {'X', 'O'};
+    int turno = 0;
+    int jugada_buffer;
+    int status_jugada;
+    int contador_errores;
+
+    vaciar_tablero(partida);
+    partida->jugadas_realizadas = 0;
+
+    for (;;)
+    {
+        int a = partida->jugadores[turno];     // juega
+        int b = partida->jugadores[1 - turno]; // espera
+        contador_errores = 0;
+
+        recv(a, &jugada_buffer, sizeof(jugada_buffer), 0);
+        status_jugada = check_jugada(jugada_buffer, signos[turno], partida);
+
+        while (status_jugada == -1)
+        {
+            if (contador_errores == 3)
+            {
+                send(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES), 0);
+                close(a);
+                send(b, &VICTORIA, sizeof(VICTORIA), 0);
+                close(b);
+                return 1;
+            }
+            send(a, &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA), 0);
+            contador_errores++;
+            recv(a, &jugada_buffer, sizeof(jugada_buffer), 0);
+            status_jugada = check_jugada(jugada_buffer, signos[turno], partida);
+        }
+
+        switch (status_jugada)
+        {
+        case 1: // Victoria de a
+            send(a, &VICTORIA, sizeof(VICTORIA), 0);
+            send(b, &DERROTA, sizeof(DERROTA), 0);
+            close(a);
+            close(b);
+            return 0;
+
+        case 4: // Empate
+            send(a, partida->tablero, sizeof(partida->tablero), 0);
+            send(b, partida->tablero, sizeof(partida->tablero), 0);
+            send(a, &EMPATE, sizeof(EMPATE), 0);
+            send(b, &EMPATE, sizeof(EMPATE), 0);
+            close(a);
+            close(b);
+            return 0;
+
+        case 0: // Jugada válida, la partida sigue
+            send(a, &JUGADA_ACEPTADA, sizeof(JUGADA_ACEPTADA), 0);
+            send(a, partida->tablero, sizeof(partida->tablero), 0);
+            send(b, partida->tablero, sizeof(partida->tablero), 0);
+            send(b, &TU_TURNO, sizeof(TU_TURNO), 0);
+            send(a, &ESPERA_TURNO, sizeof(ESPERA_TURNO), 0);
+            break;
+
+        default:
+            send(a, &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
+            send(b, &ERROR_INTERNO, sizeof(ERROR_INTERNO), 0);
+            close(a);
+            close(b);
+            perror("Resultado de jugada no manejado");
+            return -1;
+        }
+
+        turno = 1 - turno; // cambia el turno
+    }
 }
 
 int buscar_slot(struct Game *partidas)
@@ -330,9 +419,9 @@ void init_server()
     direccion_propia.sin_port = 0;
     direccion_propia.sin_addr.s_addr = htonl(INADDR_ANY);
     bzero(&(direccion_propia.sin_zero), 8);
-
+    FifoQueue en_espera = MakeFifoQueue();
     socklen_t size_direccion_propia = sizeof(direccion_propia);
-
+    int siguiente_game_id = 1;
     int socket_server;
     socket_server = socket(AF_INET, SOCK_STREAM, 0);
     /* Creamos el fichero descriptor del socket*/
@@ -378,13 +467,12 @@ void init_server()
 
     for (;;)
     {
+
         int cliente_nuevo = accept(socket_server, NULL, NULL);
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
-        clientes_conectados++;
         int slot_libre = buscar_slot(games);
         if (slot_libre != -1)
         {
-
             if (cliente_esperando == -1)
             { /* Si no hay cliente esperando, este empieza a esperar.*/
                 cliente_esperando = cliente_nuevo;
@@ -395,18 +483,18 @@ void init_server()
             }
             games[slot_libre].jugadores[0] = cliente_esperando;
             games[slot_libre].jugadores[1] = cliente_nuevo;
-
+            games[slot_libre].game_id = siguiente_game_id++;
             cliente_esperando = -1;
-            nEmitTask((int (*)())ejecutar_partida, &games[slot_libre]);
-            slot_libre++;
+            games[slot_libre].libre = 0;
+            nTask partida = nEmitTask((int (*)())jugar_partida, &games[slot_libre]);
         }
         else
         {
-            /* Encolamos */
+            PutObj(en_espera, &cliente_nuevo);
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
-
+    close(cliente_esperando);
     shutdown_server(socket_server);
     /* Aquí matamos todos los sockets */
 }
