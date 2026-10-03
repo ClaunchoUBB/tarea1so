@@ -44,6 +44,7 @@ int DEMASIADOS_ERRORES = -3;
 int ERROR_INTERNO = 200;
 int EMPATE = 4;
 int TERMINADO = 183;
+int ESPERA = 6;
 
 const int combinaciones[8][3] = {
     {0, 1, 2},
@@ -367,6 +368,7 @@ void server()
         else
         {
             int cliente_nuevo = accept(socket_server,NULL,NULL);
+            send(cliente_nuevo, &ESPERA,sizeof(ESPERA),0);
             PutObj(en_espera, &cliente_nuevo);
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
