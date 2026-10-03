@@ -56,7 +56,8 @@ struct Game
     la idea es que cada partida tiene su propio tablero
     y un par de sockets para la comunicación con los jugadores
     */
-    int uuid;
+    int game_id;
+    int libre;
     char tablero[9];
     /*
     El tablero será representado de la sigueinte manera
@@ -64,8 +65,8 @@ struct Game
     [0][1][2]
     [3][4][5]  == [0][1][2][3][4][5][6][7][8]
     [6][7][8]
-
     */
+
     int jugadas_realizadas;
     int jugadores[2];
 };
@@ -284,6 +285,18 @@ int ejecutar_partida(struct Game *partida)
     partidas_activas--;
 }
 
+int buscar_slot(struct Game *partidas)
+{
+    for (int i = 0; i < 5; i++)
+    {
+        if (partidas[i].libre == 1)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void init_server()
 {
     struct sockaddr_in direccion_propia;
@@ -307,9 +320,14 @@ void init_server()
     printf("Esperando en todas las interfaces de red\nPuerto:%d \n", ntohs(direccion_propia.sin_port));
     /* Informamos al usuario */
 
+    /* Alojamos las partidas en la memoria */
     games = malloc(5 * sizeof(*games));
 
-    /*Asignamos la memoria para los 5 juegos*/
+    for (int x = 0; x < 5; x++)
+    {
+        /* Indicamos que cada juego se encuentra actualmente libre */
+        games[x].libre = 1;
+    }
 
     /* Ahora empezamos a escuchar para que lleguen los usuarios*/
 
@@ -319,8 +337,8 @@ void init_server()
 
     /*
     Creamos una conexión en -1, de esta manera, cuando el accept()
-    reciba una conexión real, actualizará el valor y se podrá trabajar de forma
-    lógica
+    reciba una conexión real, actualizará el valor y se podrá
+    trabajar de forma lógica
     */
 
     for (;;)
@@ -328,8 +346,10 @@ void init_server()
         int cliente_nuevo = accept(socket_server, NULL, NULL);
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
         clientes_conectados++;
-        if (partidas_activas < 5)
+        int slot_libre = buscar_slot(games);
+        if (slot_libre != -1)
         {
+            
             if (cliente_esperando == -1)
             { /* Si no hay cliente esperando, este empieza a esperar.*/
                 cliente_esperando = cliente_nuevo;
@@ -338,13 +358,16 @@ void init_server()
                 continue;
                 /* Se usa un continue para saltarse lo demás y volver a esperar */
             }
-            games[partidas_activas].jugadores[0] = cliente_esperando;
-            games[partidas_activas].jugadores[1] = cliente_nuevo;
+            games[slot_libre].jugadores[0] = cliente_esperando;
+            games[slot_libre].jugadores[1] = cliente_nuevo;
 
             cliente_esperando = -1;
-            // nEmitTask(ejecutar_partida, &games[partidas_activas]);
-            nEmitTask((int (*)())ejecutar_partida, &games[partidas_activas]);
-            partidas_activas++;
+            nEmitTask((int (*)())ejecutar_partida, &games[slot_libre]);
+            slot_libre++;
+        }
+        else
+        {
+            /* Encolamos */
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
