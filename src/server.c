@@ -33,7 +33,6 @@ int ERROR_INTERNO = 200;
 int EMPATE = 4;
 
 int clientes_conectados = 0;
-int partidas_activas = 0;
 const int combinaciones[8][3] = {
     {0, 1, 2},
     {3, 4, 5},
@@ -89,11 +88,38 @@ void vaciar_tablero(struct Game *game)
     }
 }
 
-void shutdown_server()
+void shutdown_server(int socket_server)
 {
-    free(games);
-}
+    /*
+     Cerramos los sockets de los jugadores que todavía
+     estén asociados a una partida.
+    */
+    for (int i = 0; i < 5; i++)
+    {
+        if (games[i].libre == 0)
+        {
+            if (games[i].jugadores[0] != -1)
+            {
+                close(games[i].jugadores[0]);
+            }
 
+            if (games[i].jugadores[1] != -1)
+            {
+                close(games[i].jugadores[1]);
+            }
+        }
+    }
+
+    /*
+     Liberamos la memoria reservada para las partidas.
+    */
+    free(games);
+
+    /*
+     Cerramos el socket principal del servidor.
+    */
+    close(socket_server);
+}
 int check_jugada(int jugada, char signo_jugador, struct Game *partida)
 {
     // La jugada debe estar entre 0 y 8
@@ -282,7 +308,7 @@ int ejecutar_partida(struct Game *partida)
     vaciar_tablero(partida);
     partida->jugadores[0] = 0;
     partida->jugadores[1] = 0;
-    partidas_activas--;
+    partida->libre = 1;
 }
 
 int buscar_slot(struct Game *partidas)
@@ -326,7 +352,16 @@ void init_server()
     for (int x = 0; x < 5; x++)
     {
         /* Indicamos que cada juego se encuentra actualmente libre */
+        vaciar_tablero(&games[x]);
         games[x].libre = 1;
+        /* Dejamos los sockets en -1 por convención */
+        games[x].jugadores[0] = -1;
+        games[x].jugadores[1] = -1;
+
+        /* La partida aún no tiene un identificador */
+        games[x].game_id = -1;
+        /* Cada partida tiene un contador de jugadas para verificar empates */
+        games[x].jugadas_realizadas = 0;
     }
 
     /* Ahora empezamos a escuchar para que lleguen los usuarios*/
@@ -349,7 +384,7 @@ void init_server()
         int slot_libre = buscar_slot(games);
         if (slot_libre != -1)
         {
-            
+
             if (cliente_esperando == -1)
             { /* Si no hay cliente esperando, este empieza a esperar.*/
                 cliente_esperando = cliente_nuevo;
@@ -372,6 +407,6 @@ void init_server()
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
 
-    shutdown_server();
+    shutdown_server(socket_server);
     /* Aquí matamos todos los sockets */
 }
