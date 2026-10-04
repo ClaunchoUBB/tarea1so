@@ -11,6 +11,7 @@
 #include <nSystem.h>
 #include <fifoqueues.h>
 #include "server.h"
+#include <poll.h>
 
 /*
 
@@ -321,7 +322,7 @@ int jugar_partida(struct Game *partida)
             {
                 /* Envíos "mejor esfuerzo": la partida termina igual */
                 enviar_todo(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES));
-                enviar_todo(b,partida->tablero, sizeof(partida->tablero));
+                enviar_todo(b, partida->tablero, sizeof(partida->tablero));
                 enviar_todo(b, &VICTORIA, sizeof(VICTORIA));
                 cerrar_partida(partida);
                 nExitTask(1);
@@ -381,7 +382,7 @@ int jugar_partida(struct Game *partida)
             cerrar_partida(partida);
             fprintf(stderr, "Resultado de jugada no manejado: %d\n", status_jugada);
             nExitTask(-1);
-            return -1; //Nunca llegua hasta aquí
+            return -1; // Nunca llegua hasta aquí
         }
         turno = 1 - turno; // cambia el turno
     }
@@ -432,6 +433,7 @@ static void iniciar_partida(int slot, int fd0, int fd1, int *siguiente_game_id)
     games[slot].libre = 0;
 
     nTask t = nEmitTask((int (*)())tarea_partida, &games[slot]);
+
     if (t == NULL)
     {
         fprintf(stderr, "No se pudo crear la tarea de la partida %d\n", games[slot].game_id);
@@ -440,6 +442,29 @@ static void iniciar_partida(int slot, int fd0, int fd1, int *siguiente_game_id)
         games[slot].game_id = -1;
         games[slot].libre = 1;
     }
+}
+
+#include <poll.h>
+
+/*Hace poll en las conexiones para evitar un deadlock en accept()*/
+static int hay_conexion(int socket_server)
+{
+    struct pollfd pfd;
+    int r;
+
+    pfd.fd = socket_server;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    r = poll(&pfd, 1, 0); /* timeout 0: no bloquea */
+    if (r < 0)
+    {
+        if (errno == EINTR)
+            return 0;
+        perror("poll");
+        return -1;
+    }
+    return (r > 0 && (pfd.revents & POLLIN)) ? 1 : 0;
 }
 
 void server()
@@ -509,14 +534,16 @@ void server()
         goto fin;
     }
 
+    int cliente1 = -1;
+    int cliente2 = -1;
+
     for (;;) // Demonizamos
     {
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
         int slot_libre = buscar_slot(games);
         if (slot_libre != -1) // Si hay un slot libre
         {
-            int cliente1 = -1;
-            int cliente2 = -1;
+
             if (LengthFifoQueue(en_espera) >= 2) // Y una pareja esperando, jugamos
             {
                 cliente1 = sacar_cliente(en_espera);
@@ -566,24 +593,10 @@ void server()
                     /* Se usa un continue para saltarse lo demás y volver a esperar */
                 }
             }
-            /*
-            Definimos todos
-            */
-            games[slot_libre].jugadores[0] = cliente2;
-            games[slot_libre].jugadores[1] = cliente1;
-            games[slot_libre].game_id = siguiente_game_id++;
-            cliente2 = -1;
-            games[slot_libre].libre = 0;
-            nTask partida = nEmitTask((int (*)())tarea_partida, &games[slot_libre]);
 
-            if (partida == NULL)
-            {
-                perror("nEmitTask");
-                close(cliente1);
-                close(cliente2);
-                games[slot_libre].libre = 1;
-                break;
-            }
+            iniciar_partida(slot_libre, cliente2, cliente1, &siguiente_game_id);
+            cliente1=-1;
+            cliente2=-1;
         }
         else
         {
