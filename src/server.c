@@ -289,6 +289,20 @@ int jugar_partida(struct Game *partida)
     vaciar_tablero(partida);
     partida->jugadas_realizadas = 0;
 
+    if (enviar_todo(partida->jugadores[0],
+                    &signos[0],
+                    sizeof(signos[0])) < 0)
+    {
+        return abandono(partida, 0);
+    }
+
+    if (enviar_todo(partida->jugadores[1],
+                    &signos[1],
+                    sizeof(signos[1])) < 0)
+    {
+        return abandono(partida, 1);
+    }
+
     for (;;)
     {
         int a = partida->jugadores[turno];     // juega
@@ -307,6 +321,7 @@ int jugar_partida(struct Game *partida)
             {
                 /* Envíos "mejor esfuerzo": la partida termina igual */
                 enviar_todo(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES));
+                enviar_todo(b,partida->tablero, sizeof(partida->tablero));
                 enviar_todo(b, &VICTORIA, sizeof(VICTORIA));
                 cerrar_partida(partida);
                 nExitTask(1);
@@ -327,6 +342,8 @@ int jugar_partida(struct Game *partida)
         switch (status_jugada)
         {
         case 1: // Victoria de a
+            enviar_todo(a, partida->tablero, sizeof(partida->tablero));
+            enviar_todo(b, partida->tablero, sizeof(partida->tablero));
             enviar_todo(a, &VICTORIA, sizeof(VICTORIA));
             enviar_todo(b, &DERROTA, sizeof(DERROTA));
             cerrar_partida(partida);
@@ -579,7 +596,7 @@ void server()
                 free(cliente_nuevo);
                 break;
             }
-            send(cliente_nuevo, &ESPERA, sizeof(ESPERA), 0);
+            send(*cliente_nuevo, &ESPERA, sizeof(ESPERA), 0);
             PutObj(en_espera, cliente_nuevo);
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */

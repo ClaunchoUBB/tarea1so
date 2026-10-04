@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "server.h"
-
+#include "client.h"
 /*
 
 #T1
@@ -23,6 +23,7 @@ void nMain(int argc, char const *argv[])
     {
         if (codigo == 1)
         {
+            cliente();
         }
         else if (codigo == 2)
         {
@@ -30,7 +31,6 @@ void nMain(int argc, char const *argv[])
         }
         else
         {
-
             printf("Escribe el código asociado al rol \n1 -> Cliente \n2 -> Servidor \nEscribe aquí:");
             scanf("%d", &codigo);
         }
