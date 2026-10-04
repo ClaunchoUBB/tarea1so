@@ -318,7 +318,7 @@ int jugar_partida(struct Game *partida)
 
         while (status_jugada == -1)
         {
-            if (contador_errores == 3)
+            if (contador_errores == 2)
             {
                 /* Envíos "mejor esfuerzo": la partida termina igual */
                 enviar_todo(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES));
@@ -444,29 +444,6 @@ static void iniciar_partida(int slot, int fd0, int fd1, int *siguiente_game_id)
     }
 }
 
-#include <poll.h>
-
-/*Hace poll en las conexiones para evitar un deadlock en accept()*/
-static int hay_conexion(int socket_server)
-{
-    struct pollfd pfd;
-    int r;
-
-    pfd.fd = socket_server;
-    pfd.events = POLLIN;
-    pfd.revents = 0;
-
-    r = poll(&pfd, 1, 0); /* timeout 0: no bloquea */
-    if (r < 0)
-    {
-        if (errno == EINTR)
-            return 0;
-        perror("poll");
-        return -1;
-    }
-    return (r > 0 && (pfd.revents & POLLIN)) ? 1 : 0;
-}
-
 void server()
 {
     struct sockaddr_in direccion_propia;
@@ -534,83 +511,120 @@ void server()
         goto fin;
     }
 
-    int cliente1 = -1;
-    int cliente2 = -1;
+    /*Inicializamos el poll*/
+
+    struct pollfd pfd;
+
+    pfd.fd = socket_server;
+    pfd.events = POLLIN;
+
+    pfd.revents = 0;
+
+    int cliente_llegando = -1;
+    int cliente_esperando = -1;
 
     for (;;) // Demonizamos
     {
+
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
         int slot_libre = buscar_slot(games);
+
+        if (poll(&pfd, 1, 0) < 0) /* timeout 0: no bloquea */
+        {
+            if (errno == EINTR)
+                continue;
+            perror("poll");
+            break;
+        }
+        /* Si no hay conexión nueva ni pareja lista en la cola, cedemos la CPU */
+        if (!(pfd.revents & POLLIN) &&
+            !(slot_libre != -1 && LengthFifoQueue(en_espera) >= 2))
+        {
+            nSleep(100);
+            continue;
+        }
+
         if (slot_libre != -1) // Si hay un slot libre
         {
 
             if (LengthFifoQueue(en_espera) >= 2) // Y una pareja esperando, jugamos
             {
-                cliente1 = sacar_cliente(en_espera);
-                if (cliente1 == -1)
+                cliente_llegando = sacar_cliente(en_espera);
+                if (cliente_llegando == -1)
                 {
                     perror("GetObj");
                     break;
                 }
 
-                cliente2 = sacar_cliente(en_espera);
-                if (cliente2 == -1)
+                cliente_esperando = sacar_cliente(en_espera);
+                if (cliente_esperando == -1)
                 {
                     perror("GetObj");
-                    close(cliente1);
+                    close(cliente_llegando);
                     break;
                 }
             }
-            else if (LengthFifoQueue(en_espera) == 1) // Si hay uno solo, esperamos
+            else if ((LengthFifoQueue(en_espera) == 1) &&
+                     (pfd.revents & POLLIN)) // Si hay uno solo, esperamos
             {
-                cliente1 = sacar_cliente(en_espera);
-                cliente2 = accept(socket_server, NULL, NULL);
-                if (cliente2 == -1)
+                cliente_esperando = sacar_cliente(en_espera);
+
+                cliente_llegando = accept(socket_server, NULL, NULL);
+                if (cliente_llegando == -1)
                 {
                     perror("accept");
                     break;
                 }
             }
             else
-            {
-                cliente1 = accept(socket_server, NULL, NULL);
-                if (cliente1 == -1)
+            { // Si no hay nadie en cola, y hay espacio, esperamos una conexión
+                if (pfd.revents & POLLIN)
                 {
-                    perror("accept");
-                    break;
-                }
-
-                if (cliente2 == -1)
-                { /* Si no hay cliente esperando, este empieza a esperar.*/
-                    cliente2 = cliente1;
-                    if (send(cliente2, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0) == -1)
+                    cliente_llegando = accept(socket_server, NULL, NULL);
+                    if (cliente_llegando == -1)
                     {
-                        perror("send");
-                        close(cliente2);
+                        perror("accept");
                         break;
                     }
-                    continue;
-                    /* Se usa un continue para saltarse lo demás y volver a esperar */
+
+                    if (cliente_esperando == -1)
+                    { /* Si no hay cliente esperando, este empieza a esperar.*/
+                        cliente_esperando = cliente_llegando;
+                        if (send(cliente_esperando, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0) == -1)
+                        {
+                            perror("send");
+                            close(cliente_esperando);
+                            break;
+                        }
+                        continue;
+                        /* Se usa un continue para saltarse lo demás y volver a esperar */
+                    }
                 }
             }
 
-            iniciar_partida(slot_libre, cliente2, cliente1, &siguiente_game_id);
-            cliente1=-1;
-            cliente2=-1;
+            if (cliente_llegando != -1 && cliente_esperando != -1) // Si hay cliente 1 y cliente 2, empezamos una partida, sino, volvemos a revisar
+            {
+                iniciar_partida(slot_libre, cliente_esperando, cliente_llegando, &siguiente_game_id);
+                cliente_llegando = -1;
+                cliente_esperando = -1;
+            }
         }
         else
         {
-            int *cliente_nuevo;
-            cliente_nuevo = malloc(sizeof(int));
-            *cliente_nuevo = accept(socket_server, NULL, NULL);
-            if (*cliente_nuevo == -1)
+            if (pfd.revents & POLLIN)
             {
-                perror("accept");
-                free(cliente_nuevo);
-                break;
+                int *cliente_nuevo;
+                cliente_nuevo = malloc(sizeof(int));
+                *cliente_nuevo = accept(socket_server, NULL, NULL);
+                if (*cliente_nuevo == -1)
+                {
+                    perror("accept");
+                    free(cliente_nuevo);
+                    break;
+                }
+                send(*cliente_nuevo, &ESPERA, sizeof(ESPERA), 0);
+                PutObj(en_espera, cliente_nuevo);
             }
-            send(*cliente_nuevo, &ESPERA, sizeof(ESPERA), 0);
-            PutObj(en_espera, cliente_nuevo);
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
