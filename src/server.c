@@ -68,10 +68,6 @@ struct Game
 
 struct Game *games = NULL; // Estructura global para los juegos
 
-/* ------------------------------------------------------------------ */
-/*  Utilidades de I/O con manejo de errores                            */
-/* ------------------------------------------------------------------ */
-
 /*
 Envía exactamente n bytes. Retorna 0 si todo salió bien y -1 si el
 cliente se desconectó o hubo un error (ya informado por stderr).
@@ -472,61 +468,84 @@ void server()
 
     for (;;) // Demonizamos
     {
-        int cliente = accept(socket_server, NULL, NULL);
-        if (cliente < 0)
+        /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
+        int slot_libre = buscar_slot(games);
+        if (slot_libre != -1)
         {
-            if (errno == EINTR || errno == ECONNABORTED)
+            int cliente1 = -1;
+            int cliente2 = -1;
+            if (LengthFifoQueue(en_espera) != 0 && ((LengthFifoQueue(en_espera) % 2) == 0))
+            // Si esto se cumple significa que queda un número par en la cola,
+            // por lo que los puedo colocar en partida
             {
-                /* Errores transitorios: el cliente se fue antes del accept */
-                continue;
+                cliente1 = GetObj(en_espera);
+                if (cliente1 == -1)
+                {
+                    perror("GetObj");
+                    break;
+                }
+
+                cliente2 = GetObj(en_espera);
+                if (cliente2 == -1)
+                {
+                    perror("GetObj");
+                    close(cliente1);
+                    break;
+                }
             }
-            perror("accept");
-            break; /* Error grave: cerramos de forma controlada */
-        }
+            else
+            {
+                cliente1 = accept(socket_server, NULL, NULL);
+                if (cliente1 == -1)
+                {
+                    perror("accept");
+                    break;
+                }
 
-        /*
-        Avisamos al cliente su estado:
-        - sin slots libres -> ESPERA
-        - hay slot y nadie esperando -> ESPERANDO_RIVAL
-        - hay slot y ya hay alguien esperando -> se emparejan, sin mensaje
-        */
-        int slot = buscar_slot(games);
-        int *aviso = NULL;
-        if (slot == -1)
-        {
-            aviso = &ESPERA;
-        }
-        else if (LengthFifoQueue(en_espera) == 0)
-        {
-            aviso = &ESPERANDO_RIVAL;
-        }
+                if (cliente2 == -1)
+                { /* Si no hay cliente esperando, este empieza a esperar.*/
+                    cliente2 = cliente1;
+                    if (send(cliente2, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0) == -1)
+                    {
+                        perror("send");
+                        close(cliente2);
+                        break;
+                    }
+                    // El código 3 corresponderá a "Esperando contrincante"
+                    continue;
+                    /* Se usa un continue para saltarse lo demás y volver a esperar */
+                }
+            }
 
-        if (aviso != NULL && enviar_todo(cliente, aviso, sizeof(*aviso)) < 0)
-        {
-            fprintf(stderr, "Cliente se desconectó antes de entrar a la cola\n");
-            close(cliente);
-            continue;
-        }
+            games[slot_libre].jugadores[0] = cliente2;
+            games[slot_libre].jugadores[1] = cliente1;
+            games[slot_libre].game_id = siguiente_game_id++;
+            cliente2 = -1;
+            games[slot_libre].libre = 0;
+            nTask partida = nEmitTask((int (*)())jugar_partida, &games[slot_libre]);
 
-        int *copia = malloc(sizeof(int));
-        if (copia == NULL)
-        {
-            perror("malloc");
-            close(cliente);
-            continue;
+            if (partida == NULL)
+            {
+                perror("nEmitTask");
+                close(cliente1);
+                close(cliente2);
+                games[slot_libre].libre = 1;
+                break;
+            }
         }
-        *copia = cliente;
-        PutObj(en_espera, copia);
+        else
+        {
+            int cliente_nuevo = accept(socket_server, NULL, NULL);
 
-        /* Mientras haya dos clientes esperando y un slot libre, armamos partidas */
-        while (LengthFifoQueue(en_espera) >= 2 && (slot = buscar_slot(games)) != -1)
-        {
-            int fd0 = sacar_cliente(en_espera);
-            int fd1 = sacar_cliente(en_espera);
-            iniciar_partida(slot, fd0, fd1, &siguiente_game_id);
+            if (cliente_nuevo == -1)
+            {
+                perror("accept");
+                break;
+            }
+            PutObj(en_espera, &cliente_nuevo);
         }
+        /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
-
 fin:
     /* Cerramos los clientes que seguían en la cola de espera */
     while (LengthFifoQueue(en_espera) > 0)
