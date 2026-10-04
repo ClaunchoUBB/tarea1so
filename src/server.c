@@ -321,7 +321,7 @@ int jugar_partida(struct Game *partida)
             {
                 /* Envíos "mejor esfuerzo": la partida termina igual */
                 enviar_todo(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES));
-                enviar_todo(b,partida->tablero, sizeof(partida->tablero));
+                enviar_todo(b, partida->tablero, sizeof(partida->tablero));
                 enviar_todo(b, &VICTORIA, sizeof(VICTORIA));
                 cerrar_partida(partida);
                 nExitTask(1);
@@ -381,7 +381,7 @@ int jugar_partida(struct Game *partida)
             cerrar_partida(partida);
             fprintf(stderr, "Resultado de jugada no manejado: %d\n", status_jugada);
             nExitTask(-1);
-            return -1; //Nunca llegua hasta aquí
+            return -1; // Nunca llegua hasta aquí
         }
         turno = 1 - turno; // cambia el turno
     }
@@ -546,25 +546,37 @@ void server()
             }
             else
             {
+                int *cliente_esperando;
+
                 cliente1 = accept(socket_server, NULL, NULL);
+
                 if (cliente1 == -1)
                 {
                     perror("accept");
                     break;
                 }
 
-                if (cliente2 == -1)
-                { /* Si no hay cliente esperando, este empieza a esperar.*/
-                    cliente2 = cliente1;
-                    if (send(cliente2, &ESPERANDO_RIVAL, sizeof(ESPERANDO_RIVAL), 0) == -1)
-                    {
-                        perror("send");
-                        close(cliente2);
-                        break;
-                    }
-                    continue;
-                    /* Se usa un continue para saltarse lo demás y volver a esperar */
+                if (send(cliente1, &ESPERANDO_RIVAL,
+                         sizeof(ESPERANDO_RIVAL), 0) == -1)
+                {
+                    perror("send");
+                    close(cliente1);
+                    break;
                 }
+
+                cliente_esperando = malloc(sizeof(int));
+
+                if (cliente_esperando == NULL)
+                {
+                    perror("malloc");
+                    close(cliente1);
+                    break;
+                }
+
+                *cliente_esperando = cliente1;
+                PutObj(en_espera, cliente_esperando);
+
+                continue;
             }
             /*
             Definimos todos
