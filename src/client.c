@@ -19,19 +19,20 @@
 // Definimos la estructura del tablero exactamente igual que en el servidor
 struct GameBuffer
 {
-    char tablero[3][3];
+    char tablero[9];
     char mensaje[100]; // Un buffer útil para que el servidor le diga al cliente qué hacer
     int mi_turno;      // 1 si el cliente debe mover, 0 si debe esperar, -1 si terminó el juego
 };
 
-void mostrar_tablero_cliente(char tablero[3][3])
+void mostrar_tablero_cliente(char tablero[9])
 {
+    char coord [3]= {'0','1','2'};
     printf("\n");
-    for (int x = 0; x < 3; x++)
+    printf(" 0 | 1 | 2 \n");
+    for (int x = 0; x < 9; x += 3)
     {
-        printf(" %c | %c | %c \n", tablero[x][0], tablero[x][1], tablero[x][2]);
-        if (x < 2)
-            printf("---+---+---\n");
+        printf(" %c %c | %c | %c \n",coord[x] , tablero[x], tablero[x+1], tablero[x+2]);
+            printf("  ---+---+---\n");
     }
     printf("\n");
 }
@@ -114,10 +115,12 @@ int main(int argc, char const *argv[])
                 }
             } while (fila < 0 || fila > 2 || columna < 0 || columna > 2);
 
-            // Empaquetamos la jugada en las primeras posiciones del tablero o creas un struct de movimiento.
-            // Para mantenerlo simple, mandamos las coordenadas directamente en un array de 2 enteros al servidor:
-            int movimiento[2] = {fila, columna};
-            send(socketfd, movimiento, sizeof(movimiento), 0);
+            /* Transformamos las coordenadas a la estructura real del tablero para simplificar la comunicación con el servidor*/
+            int index;
+            index = (fila * 3) + columna;
+
+            /* se envia la jugada al servidor de modo que lo pueda procesar*/
+            send(socketfd, index, sizeof(int), 0);
 
             printf("Enviando movimiento [%d, %d] al servidor...\n", fila, columna);
         }
