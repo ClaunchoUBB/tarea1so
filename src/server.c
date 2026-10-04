@@ -10,6 +10,7 @@
 #include <strings.h>
 #include <nSystem.h>
 #include <fifoqueues.h>
+#include "server.h"
 
 /*
 
@@ -409,7 +410,6 @@ void server()
     FifoQueue en_espera = MakeFifoQueue();
     int siguiente_game_id = 1;
     int socket_server = -1;
-
     /*
     Si un cliente se desconecta y le hacemos send(), el SO manda SIGPIPE
     y mataría todo el servidor. Lo ignoramos: send() retornará -1 con EPIPE.
