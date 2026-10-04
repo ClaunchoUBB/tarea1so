@@ -8,7 +8,6 @@
 #Claudio Rodríguez Parra
 #Jesús Vivanco Zambrano
 #Luciano Venegas Castro
-NSYSTEM ?= ./libs/nsystem64-beta3
 
 CFLAGS=-ggdb -I$(NSYSTEM)/include -I$(NSYSTEM)/src
 LDFLAGS=-ggdb -L$(NSYSTEM)/lib
