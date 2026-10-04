@@ -17,8 +17,6 @@
 #T1
 #4 de Octubre 2026
 #Claudio Rodríguez Parra
-#Jesús Vivanco Zambrano
-#Luciano Venegas Castro
 
 */
 
@@ -54,6 +52,12 @@ const int combinaciones[8][3] = {
 
 struct Game
 {
+    /*
+    Esta estructura, respresenta en el sentido más literal posible
+    el concepto de un espacio de juego, posee su tablero, el número
+    de jugadas realizadas (para declarar empate) y los jugadores
+    además de un identificador único.
+    */
     int game_id;
     int libre;
     char tablero[9];
@@ -68,13 +72,13 @@ struct Game
 
 struct Game *games = NULL; // Estructura global para los juegos
 
-/*
-Envía exactamente n bytes. Retorna 0 si todo salió bien y -1 si el
-cliente se desconectó o hubo un error (ya informado por stderr).
-Un send() puede enviar menos bytes de los pedidos, por eso el ciclo.
-*/
 static int enviar_todo(int fd, const void *buf, size_t n)
 {
+    /*
+    Esta función abstrae el uso del send()
+    y espera errores.
+    */
+
     const char *p = buf;
     size_t enviado = 0;
 
@@ -102,12 +106,13 @@ static int enviar_todo(int fd, const void *buf, size_t n)
     return 0;
 }
 
-/*
-Recibe exactamente n bytes. Retorna 0 si todo salió bien y -1 si el
-cliente cerró la conexión (recv == 0) o hubo un error.
-*/
 static int recibir_todo(int fd, void *buf, size_t n)
 {
+
+    /*
+    Esta func abstrae el uso de recieve. Retorna 0 si todo salió bien y -1 si el
+    cliente cerró la conexión (recv == 0) o hubo un error.
+    */
     char *p = buf;
     size_t recibido = 0;
 
@@ -138,6 +143,8 @@ static int recibir_todo(int fd, void *buf, size_t n)
 
 static void cerrar_fd(int *fd)
 {
+
+    /* Lit lo que dice el nombre */
     if (*fd != -1)
     {
         if (close(*fd) < 0)
@@ -150,7 +157,10 @@ static void cerrar_fd(int *fd)
 
 void vaciar_tablero(struct Game *game)
 {
-    /* Esta función existe para que a la hora de crear un juego, el tablero siempre esté lleno de ' ' */
+    /*
+    Esta función existe para que a la hora de crear un juego
+    el tablero siempre esté lleno de ' '
+    */
     for (int x = 0; x < 9; x++)
     {
         game->tablero[x] = ' ';
@@ -259,6 +269,17 @@ Retorna:
 */
 int jugar_partida(struct Game *partida)
 {
+    /*
+    Esta sí que es una de las más importantes
+
+    La idea principal es que reciba una partida y se comunique
+    constantemente con ambos jugadores, asímismo, constamente
+    cambia entre el jugador 1 y el 2 en los ints a y b
+    esta función no es la encargada de chekear las jugadas
+    simplemente comunica los dos jugadores con el tablero
+    y el servidor
+    */
+
     const char signos[2] = {'X', 'O'};
     int turno = 0;
     int jugada_buffer;
@@ -288,6 +309,7 @@ int jugar_partida(struct Game *partida)
                 enviar_todo(a, &DEMASIADOS_ERRORES, sizeof(DEMASIADOS_ERRORES));
                 enviar_todo(b, &VICTORIA, sizeof(VICTORIA));
                 cerrar_partida(partida);
+                nExitTask(1);
                 return 1;
             }
             if (enviar_todo(a, &JUGADA_INVALIDA, sizeof(JUGADA_INVALIDA)) < 0)
@@ -316,6 +338,7 @@ int jugar_partida(struct Game *partida)
             enviar_todo(a, &EMPATE, sizeof(EMPATE));
             enviar_todo(b, &EMPATE, sizeof(EMPATE));
             cerrar_partida(partida);
+            nExitTask(0);
             return 0;
 
         case 0: // Jugada válida, la partida sigue
@@ -340,9 +363,9 @@ int jugar_partida(struct Game *partida)
             enviar_todo(b, &ERROR_INTERNO, sizeof(ERROR_INTERNO));
             cerrar_partida(partida);
             fprintf(stderr, "Resultado de jugada no manejado: %d\n", status_jugada);
-            return -1;
+            nExitTask(-1);
+            return -1; //Nunca llegua hasta aquí
         }
-
         turno = 1 - turno; // cambia el turno
     }
 }
@@ -361,6 +384,9 @@ int tarea_partida(struct Game *partida)
 
 int buscar_slot(struct Game *partidas)
 {
+    /*
+    Busca un slot disponible entre las partidas alojadas en mem
+    */
     for (int i = 0; i < NUM_PARTIDAS; i++)
     {
         if (partidas[i].libre == 1)
@@ -495,12 +521,11 @@ void server()
             {
                 cliente1 = sacar_cliente(en_espera);
                 cliente2 = accept(socket_server, NULL, NULL);
-                if (cliente2==-1)
+                if (cliente2 == -1)
                 {
                     perror("accept");
                     break;
                 }
-                
             }
             else
             {
@@ -520,12 +545,13 @@ void server()
                         close(cliente2);
                         break;
                     }
-                    // El código 3 corresponderá a "Esperando contrincante"
                     continue;
                     /* Se usa un continue para saltarse lo demás y volver a esperar */
                 }
             }
-
+            /*
+            Definimos todos
+            */
             games[slot_libre].jugadores[0] = cliente2;
             games[slot_libre].jugadores[1] = cliente1;
             games[slot_libre].game_id = siguiente_game_id++;
