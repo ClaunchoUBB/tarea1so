@@ -470,28 +470,37 @@ void server()
     {
         /* Esperamos una conexión en el socket del server, pero no nos interesa quien se conecta */
         int slot_libre = buscar_slot(games);
-        if (slot_libre != -1)
+        if (slot_libre != -1) // Si hay un slot libre
         {
             int cliente1 = -1;
             int cliente2 = -1;
-            if (LengthFifoQueue(en_espera) != 0 && ((LengthFifoQueue(en_espera) % 2) == 0))
-            // Si esto se cumple significa que queda un número par en la cola,
-            // por lo que los puedo colocar en partida
+            if (LengthFifoQueue(en_espera) >= 2) // Y una pareja esperando, jugamos
             {
-                cliente1 = GetObj(en_espera);
+                cliente1 = sacar_cliente(en_espera);
                 if (cliente1 == -1)
                 {
                     perror("GetObj");
                     break;
                 }
 
-                cliente2 = GetObj(en_espera);
+                cliente2 = sacar_cliente(en_espera);
                 if (cliente2 == -1)
                 {
                     perror("GetObj");
                     close(cliente1);
                     break;
                 }
+            }
+            else if (LengthFifoQueue(en_espera) == 1) // Si hay uno solo, esperamos
+            {
+                cliente1 = sacar_cliente(en_espera);
+                cliente2 = accept(socket_server, NULL, NULL);
+                if (cliente2==-1)
+                {
+                    perror("accept");
+                    break;
+                }
+                
             }
             else
             {
@@ -522,7 +531,7 @@ void server()
             games[slot_libre].game_id = siguiente_game_id++;
             cliente2 = -1;
             games[slot_libre].libre = 0;
-            nTask partida = nEmitTask((int (*)())jugar_partida, &games[slot_libre]);
+            nTask partida = nEmitTask((int (*)())tarea_partida, &games[slot_libre]);
 
             if (partida == NULL)
             {
@@ -535,14 +544,17 @@ void server()
         }
         else
         {
-            int cliente_nuevo = accept(socket_server, NULL, NULL);
-
-            if (cliente_nuevo == -1)
+            int *cliente_nuevo;
+            cliente_nuevo = malloc(sizeof(int));
+            *cliente_nuevo = accept(socket_server, NULL, NULL);
+            if (*cliente_nuevo == -1)
             {
                 perror("accept");
+                free(cliente_nuevo);
                 break;
             }
-            PutObj(en_espera, &cliente_nuevo);
+            send(cliente_nuevo, &ESPERA, sizeof(ESPERA), 0);
+            PutObj(en_espera, cliente_nuevo);
         }
         /* Utilizando nSystem llamamos a un subproceso para facilitar esta parte */
     }
