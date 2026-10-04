@@ -14,7 +14,7 @@ CFLAGS=-ggdb -I$(NSYSTEM)/include -I$(NSYSTEM)/src
 LDFLAGS=-ggdb -L$(NSYSTEM)/lib
 LDLIBS=-lnSys
 
-TARGET=T1_crp_jvz_lvc
+TARGET=T1_crp
 
 SRC=src/main.c src/server.c src/client.c
 
