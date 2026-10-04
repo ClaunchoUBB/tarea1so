@@ -151,8 +151,6 @@ static void cerrar_fd(int *fd)
     }
 }
 
-/* ------------------------------------------------------------------ */
-
 void vaciar_tablero(struct Game *game)
 {
     /* Esta función existe para que a la hora de crear un juego, el tablero siempre esté lleno de ' ' */
